@@ -57,7 +57,7 @@ MemoryLevel generateMemoryLevel(LevelSpec spec) {
           ..add(makeCard(rank, suit, 1));
       case MemoryMatch.rankColor:
         // Aynı renkteki iki farklı desen: maça+sinek ya da kupa+karo.
-        final red = r.nextBool();
+        final red = r.nextInt(2) == 1;
         final pair = red ? [kHearts, kDiamonds] : [kSpades, kClubs];
         final key = rank * 2 + (red ? 1 : 0);
         if (!used.add(key) && used.length < 26) continue;
