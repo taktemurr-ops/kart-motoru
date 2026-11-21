@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'cards.dart';
+import 'tarot.dart';
 
 /// Stüdyonun kendi kart tasarımı: fildişi zemin, büyük köşe yazısı, ortada
 /// tek büyük renk simgesi; resimli kartlarda geometrik arma. Sırt deseni
@@ -182,6 +183,10 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
         ..color = const Color(0xFFD9D1C0)
         ..style = PaintingStyle.stroke
         ..strokeWidth = math.max(0.8, w * 0.015));
+  if (isTarotSpecial(card)) {
+    _paintTarot(c, r, card, s);
+    return;
+  }
   final rank = rankOf(card), suit = suitOf(card);
   final col = s.suitColor(suit);
   // Köşe: değer + küçük simge (sol üst), ters köşe (sağ alt).
@@ -229,6 +234,103 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
     final g = math.min(body.width, body.height) * (rank == 1 ? 0.95 : 0.75);
     paintSuit(c, suit, Rect.fromCenter(center: body.center.translate(0, r.height * 0.04), width: g, height: g), col);
   }
+}
+
+/// 78'lik destenin özel kartları: at (süvari), numaralı kozlar ve Kaçak.
+/// Kozlar resimsiz: büyük numara, altın şerit ve basamak çubuğu.
+void _paintTarot(Canvas c, Rect r, KCard card, CardStyle s) {
+  final w = r.width;
+  final body = Rect.fromLTRB(r.left + w * 0.16, r.top + r.height * 0.22, r.right - w * 0.16, r.bottom - r.height * 0.22);
+  if (isTarotKnight(card)) {
+    final suit = card - kTarotKnight;
+    final col = s.suitColor(suit);
+    final lab = _label('C', w * 0.30, col);
+    lab.paint(c, Offset(r.left + w * 0.07, r.top + w * 0.05));
+    final small = w * 0.20;
+    paintSuit(c, suit, Rect.fromLTWH(r.left + w * 0.07 + (lab.width - small) / 2, r.top + w * 0.07 + lab.height, small, small), col);
+    c.save();
+    c.translate(r.right, r.bottom);
+    c.rotate(math.pi);
+    lab.paint(c, Offset(w * 0.07, w * 0.05));
+    c.restore();
+    final frame = RRect.fromRectAndRadius(body.deflate(w * 0.06), Radius.circular(w * 0.30));
+    c.drawRRect(frame, Paint()..color = col.withValues(alpha: 0.10));
+    c.drawRRect(
+        frame,
+        Paint()
+          ..color = col.withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1, w * 0.02));
+    final g = body.width * 0.42;
+    paintSuit(c, suit, Rect.fromCenter(center: body.center, width: g, height: g), col);
+    // Üstte ve altta iki küçük nal kemeri.
+    final arc = Paint()
+      ..color = col.withValues(alpha: 0.7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(1.2, w * 0.03);
+    final a = body.width * 0.22;
+    c.drawArc(Rect.fromCenter(center: Offset(body.center.dx, body.top + a * 0.9), width: a * 2, height: a * 1.4), math.pi, math.pi, false, arc);
+    c.drawArc(Rect.fromCenter(center: Offset(body.center.dx, body.bottom - a * 0.9), width: a * 2, height: a * 1.4), 0, math.pi, false, arc);
+    return;
+  }
+  const gold = Color(0xFFB07A1E);
+  const deep = Color(0xFF2A3F6B);
+  final band = RRect.fromRectAndRadius(Rect.fromLTRB(r.left + w * 0.05, r.top + w * 0.05, r.right - w * 0.05, r.bottom - w * 0.05), Radius.circular(w * 0.07));
+  c.drawRRect(
+      band,
+      Paint()
+        ..color = gold.withValues(alpha: 0.75)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1, w * 0.025));
+  if (card == kTarotExcuse) {
+    final lab = _label('★', w * 0.26, deep);
+    lab.paint(c, Offset(r.left + w * 0.09, r.top + w * 0.07));
+    c.save();
+    c.translate(r.right, r.bottom);
+    c.rotate(math.pi);
+    lab.paint(c, Offset(w * 0.09, w * 0.07));
+    c.restore();
+    final ctr = body.center;
+    final a = body.width * 0.42;
+    final star = Path();
+    for (var i = 0; i < 10; i++) {
+      final ang = -math.pi / 2 + i * math.pi / 5;
+      final rad = i.isEven ? a : a * 0.45;
+      final pt = Offset(ctr.dx + math.cos(ang) * rad, ctr.dy + math.sin(ang) * rad);
+      i == 0 ? star.moveTo(pt.dx, pt.dy) : star.lineTo(pt.dx, pt.dy);
+    }
+    star.close();
+    c.drawCircle(ctr, a * 1.1, Paint()..color = gold.withValues(alpha: 0.15));
+    c.drawPath(star, Paint()..color = gold);
+    return;
+  }
+  final n = tarotTrumpNo(card);
+  final lab = _label('$n', w * 0.27, deep);
+  lab.paint(c, Offset(r.left + w * 0.09, r.top + w * 0.07));
+  c.save();
+  c.translate(r.right, r.bottom);
+  c.rotate(math.pi);
+  lab.paint(c, Offset(w * 0.09, w * 0.07));
+  c.restore();
+  // Orta: altın rozet içinde büyük numara.
+  final ctr = body.center;
+  final rad = body.width * 0.48;
+  c.drawCircle(ctr, rad, Paint()..color = deep.withValues(alpha: 0.10));
+  c.drawCircle(
+      ctr,
+      rad,
+      Paint()
+        ..color = gold
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.2, w * 0.03));
+  final big = _label('$n', rad * 1.0, deep, w: FontWeight.w900);
+  big.paint(c, ctr - Offset(big.width / 2, big.height / 2));
+  // Basamak çubuğu: kozun gücü (1–21) alt kenarda dolan şerit.
+  final bar = Rect.fromLTWH(body.left, body.bottom + r.height * 0.06, body.width, r.height * 0.035);
+  c.drawRRect(RRect.fromRectAndRadius(bar, Radius.circular(bar.height)), Paint()..color = deep.withValues(alpha: 0.12));
+  c.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(bar.left, bar.top, bar.width * n / 21, bar.height), Radius.circular(bar.height)),
+      Paint()..color = gold);
 }
 
 /// Boş yuva (temel, boş sütun) çizimi.

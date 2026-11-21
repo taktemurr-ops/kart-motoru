@@ -17,6 +17,7 @@ export 'src/trick_view.dart';
 export 'src/trick_games.dart';
 export 'src/trick_games3.dart';
 export 'src/trick_games4.dart';
+export 'src/tarot.dart';
 export 'src/kart_texts.dart';
 export 'src/table_ai.dart';
 export 'src/table_engine.dart';

@@ -13,6 +13,7 @@ void main() {
     'sheepshead': TrickGameRules(gameId: 'sheepshead', rulesFor: (_) => const SheepsheadRules()),
     'bridge': TrickGameRules(gameId: 'bridge', rulesFor: (_) => const ContractBridgeRules()),
     'bezik': TrickGameRules(gameId: 'bezik', rulesFor: (_) => const BezikRules()),
+    'tarot': TrickGameRules(gameId: 'tarot', rulesFor: (_) => const TarotRules()),
   };
 
   games.forEach((name, rules) {
@@ -49,5 +50,31 @@ void main() {
     expect(r.effSuit(s, makeCard(11, kDiamonds)), kHearts);
     expect(r.beats(s, makeCard(11, kHearts), makeCard(11, kDiamonds), kHearts), isTrue);
     expect(r.beats(s, makeCard(11, kDiamonds), makeCard(1, kHearts), kHearts), isTrue);
+  });
+
+  test('tarok destesi ve kurallar', () {
+    final d = buildTarotDeck();
+    expect(d.length, 78);
+    expect(d.toSet().length, 78);
+    expect(d.fold<int>(0, (a, c) => a + tarotPoints2(c)), 182);
+    const r = TarotRules();
+    final s = r.deal(List.of(d), 0);
+    expect(s.hands.every((h) => h.length == 18), isTrue);
+    expect(s.kitty.length, 6);
+    // Renk yoksa koz, kozda yükseltme zorunlu; Kaçak her zaman oynanabilir.
+    s
+      ..phase = TrickPhase.play
+      ..trump = kVirtualTrump
+      ..leader = 1
+      ..turn = 0;
+    s.hands[0]
+      ..clear()
+      ..addAll([makeCard(5, kHearts), kTarotTrump + 3, kTarotTrump + 12, kTarotExcuse]);
+    s.trick.addAll([makeCard(2, kSpades)]);
+    expect(r.legalPlays(s, 0).toSet(), {kTarotTrump + 3, kTarotTrump + 12, kTarotExcuse});
+    s.trick.add(kTarotTrump + 10);
+    expect(r.legalPlays(s, 0).toSet(), {kTarotTrump + 12, kTarotExcuse});
+    expect(r.beats(s, kTarotTrump + 1, makeCard(13, kSpades), kSpades), isTrue);
+    expect(r.beats(s, kTarotExcuse, makeCard(2, kSpades), kSpades), isFalse);
   });
 }
