@@ -158,18 +158,18 @@ class PresidentRules extends TableRules {
 }
 
 // ======================================================================
-/// Papaz Kaçtı: bir kız çıkarılmış desteyle oynanır; eşler atılır. Sıra sende
-/// sağındaki oyuncudan kapalı bir kart çekersin. Sonda tek kızla kalan kaybeder.
+/// Papaz Kaçtı: bir papaz çıkarılmış desteyle oynanır; eşler atılır. Sıra sende
+/// yanındaki oyuncudan kapalı bir kart çekersin. Sonda tek papazla kalan kaybeder.
 class OldMaidRules extends TableRules {
   const OldMaidRules();
 
   @override
   int get seats => 3;
 
-  static final _maid = makeCard(12, kSpades);
+  static final _maid = makeCard(13, kSpades);
 
   @override
-  List<KCard> deck() => buildDeck()..remove(makeCard(12, kClubs));
+  List<KCard> deck() => buildDeck()..remove(makeCard(13, kClubs));
 
   @override
   List<PileView> get pileViews => const [PileView('Atılan eşler', 'Pairs out', spread: true)];
@@ -246,7 +246,7 @@ class OldMaidRules extends TableRules {
     s.hands[seat].add(c);
     _discardPairs(s, seat);
     _sortByRank(s.hands[seat], rankOf);
-    // Kartların yeri karışsın (kız nerede bilinmesin).
+    // Kartların yeri karışsın (papaz nerede bilinmesin).
     final hs = s.hands[src];
     if (hs.length > 1) {
       s.vars[5] = (s.vars[5] + 5) % 97;
@@ -266,7 +266,7 @@ class OldMaidRules extends TableRules {
   List<int> finalScores(TableState s) => [for (var p = 0; p < 3; p++) s.hands[p].contains(_maid) ? -5 : (s.scores[p] < 0 ? 0 : s.scores[p])];
 
   @override
-  String status(TableState s, String lang) => Strings.tx(lang, 'Maça kızı sende kalmasın!', 'Don\'t get stuck with the queen of spades!');
+  String status(TableState s, String lang) => Strings.pick(_oddKing, lang);
 }
 
 // ======================================================================
@@ -651,3 +651,15 @@ class ThirtyOneRules extends TableRules {
   String status(TableState s, String lang) =>
       '${Strings.tx(lang, 'Elin', 'Your hand')}: ${handValue(s.hands[0])}${s.vars[1] >= 0 ? ' · ${Strings.tx(lang, 'Kapatıldı', 'Knocked')}' : ''}';
 }
+
+const _oddKing = [
+  'Tek papaz sende kalmasın!', 'Don\'t get stuck with the odd king!', 'Bleib nicht auf dem letzten König sitzen!', '¡Que no te quede el rey suelto!',
+  'Ne restez pas avec le roi seul !', 'لا يبقَ معك الملك الوحيد!', 'شاه تنها دستت نماند!', 'שהמלך הבודד לא יישאר אצלך!',
+  'اکیلا بادشاہ آپ کے پاس نہ رہے!', 'Не останьтесь с лишним королём!', 'Не залиштеся з зайвим королем!', 'Nie zostań z samotnym królem!',
+  'Nezůstaň s osamělým králem!', 'Nu rămâne cu regele singur!', 'Ne nálad maradjon a magányos király!', 'Μη μείνεις με τον μόνο βασιλιά!',
+  'Non restare con il re solo!', 'Não fique com o rei sozinho!', 'Blijf niet zitten met de eenzame koning!', 'Bli inte kvar med den ensamma kungen!',
+  'Bliv ikke siddende med den ensomme konge!', 'Ikke bli sittende med den ensomme kongen!', 'Älä jää yksinäisen kuninkaan kanssa!', '最後のキングを残さないで！',
+  '외톨이 킹을 떠안지 마세요!', '别让落单的K留在你手里！', 'अकेला बादशाह आपके पास न रहे!', 'একা রাজা যেন আপনার কাছে না থাকে!',
+  'Jangan tersisa dengan raja sendirian!', 'Jangan tinggal dengan raja bersendirian!', 'อย่าให้คิงเดี่ยวค้างมือ!', 'Đừng để kẹt vua lẻ!',
+  'Huwag maiwan sa nag-iisang hari!',
+];
