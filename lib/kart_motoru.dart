@@ -21,3 +21,6 @@ export 'src/table_games.dart';
 export 'src/table_games2.dart';
 export 'src/table_rules.dart';
 export 'src/table_view.dart';
+export 'src/memory_engine.dart';
+export 'src/memory_rules.dart';
+export 'src/memory_view.dart';
