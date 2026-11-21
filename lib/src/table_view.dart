@@ -195,7 +195,7 @@ class _TableViewState extends State<TableView> {
   Widget _pile(int i, double cw) {
     final pv = rules.pileViews[i];
     final p = s.piles[i];
-    final label = Strings.tx(ctx.lang, pv.trLabel, pv.enLabel);
+    final label = pv.labels != null ? Strings.pick(pv.labels!, ctx.lang) : Strings.tx(ctx.lang, pv.trLabel, pv.enLabel);
     Widget body;
     if (p.isEmpty) {
       body = SizedBox(
@@ -204,9 +204,10 @@ class _TableViewState extends State<TableView> {
         child: CustomPaint(painter: _SlotP()),
       );
     } else if (pv.spread) {
-      final show = p.length > 12 ? p.sublist(p.length - 12) : p;
-      body = Wrap(spacing: 4, runSpacing: 4, alignment: WrapAlignment.center, children: [
-        for (final c in show) _card(c, cw * 0.8, up: pv.faceUp),
+      final show = p.length > pv.maxShown ? p.sublist(p.length - pv.maxShown) : p;
+      final small = pv.maxShown > 12 ? cw * 0.55 : cw * 0.8;
+      body = Wrap(spacing: pv.maxShown > 12 ? 2 : 4, runSpacing: 4, alignment: WrapAlignment.center, children: [
+        for (final c in show) _card(c, small, up: pv.faceUp),
       ]);
     } else {
       body = Stack(clipBehavior: Clip.none, children: [
@@ -225,7 +226,9 @@ class _TableViewState extends State<TableView> {
   Widget build(BuildContext context) {
     final legal = s.turn == 0 && !s.over && !_busy ? rules.legalActions(s) : const <TAction>[];
     final playable = {for (final a in legal) if (a.cards.length == 1) a.cards.first};
-    final buttons = legal.where((a) => !rules.isCardPlay(a)).where((a) =>
+    final buttons = legal
+        .where((a) => !rules.isCardPlay(a) || (_selected.length == 1 && a.cards.length == 1 && _selected.contains(a.cards.first)))
+        .where((a) =>
         a.cards.isEmpty || _selected.isEmpty || a.cards.toSet().containsAll(_selected)).take(16).toList();
     final status = rules.status(s, ctx.lang);
     return LayoutBuilder(builder: (context, cons) {

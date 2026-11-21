@@ -111,7 +111,9 @@ class PileView {
   final String trLabel, enLabel;
   final bool faceUp;
   final bool spread; // masadaki kartlar yan yana mı
-  const PileView(this.trLabel, this.enLabel, {this.faceUp = true, this.spread = false});
+  final int maxShown; // yan yana gösterilecek en çok kart
+  final List<String>? labels; // 33 dilde ad (verilirse trLabel/enLabel yerine)
+  const PileView(this.trLabel, this.enLabel, {this.faceUp = true, this.spread = false, this.maxShown = 12, this.labels});
 }
 
 abstract class TableRules {
