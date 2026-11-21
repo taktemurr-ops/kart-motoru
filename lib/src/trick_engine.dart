@@ -205,8 +205,8 @@ abstract class TrickRules {
   List<KCard> legalPlays(TrickState s, int seat) {
     final h = s.hands[seat];
     if (s.trick.isEmpty) return leadOptions(s, seat);
-    final lead = suitOf(s.trick.first);
-    final follow = h.where((c) => suitOf(c) == lead).toList();
+    final lead = effSuit(s, s.trick.first);
+    final follow = h.where((c) => effSuit(s, c) == lead).toList();
     return follow.isNotEmpty ? follow : List.of(h);
   }
 
@@ -214,7 +214,7 @@ abstract class TrickRules {
 
   /// Masadaki elin kazananı (koltuk).
   int trickWinner(TrickState s) {
-    final lead = suitOf(s.trick.first);
+    final lead = effSuit(s, s.trick.first);
     var best = 0;
     for (var i = 1; i < s.trick.length; i++) {
       if (beats(s, s.trick[i], s.trick[best], lead)) best = i;
@@ -223,15 +223,15 @@ abstract class TrickRules {
   }
 
   bool beats(TrickState s, KCard a, KCard b, int lead) {
-    final ta = suitOf(a) == s.trump, tb = suitOf(b) == s.trump;
+    final ta = isTrump(s, a), tb = isTrump(s, b);
     if (ta != tb) return ta;
-    if (suitOf(a) != suitOf(b)) return false;
+    if (effSuit(s, a) != effSuit(s, b)) return false;
     return strength(a) > strength(b);
   }
 
   void play(TrickState s, int seat, KCard c) {
-    if (s.trick.isNotEmpty && suitOf(c) != suitOf(s.trick.first)) {
-      s.voids[seat].add(suitOf(s.trick.first));
+    if (s.trick.isNotEmpty && effSuit(s, c) != effSuit(s, s.trick.first)) {
+      s.voids[seat].add(effSuit(s, s.trick.first));
     }
     s.hands[seat].remove(c);
     s.trick.add(c);
@@ -268,11 +268,19 @@ abstract class TrickRules {
     final sc = handScores(s);
     var best = -1 << 30;
     for (var i = 0; i < seats; i++) {
-      if (i == seat || (partnerships && i == s.partnerOf(seat))) continue;
+      if (teammates(s, seat, i)) continue;
       if (sc[i] > best) best = sc[i];
     }
     return (sc[seat] - best).toDouble();
   }
+
+  /// Kartın oyundaki rengi (Euchre'de sol bower, Skat'ta valeler koz rengidir).
+  int effSuit(TrickState s, KCard c) => suitOf(c);
+
+  bool isTrump(TrickState s, KCard c) => s.trump >= 0 && effSuit(s, c) == s.trump;
+
+  /// İki koltuk aynı tarafta mı (ihaleyi alan tek başına oynayan oyunlarda değişir).
+  bool teammates(TrickState s, int a, int b) => a == b || (partnerships && b == s.partnerOf(a));
 
   /// Hearts gibi oyunlarda el almaktan kaçınılır (hızlı politika için).
   bool get avoidTricks => false;

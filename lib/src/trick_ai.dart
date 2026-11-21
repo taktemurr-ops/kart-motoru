@@ -56,7 +56,7 @@ class TrickAI {
     for (final c in pool) {
       var placed = false;
       for (final p in order) {
-        if (w.hands[p].length < need[p] && !s.voids[p].contains(suitOf(c))) {
+        if (w.hands[p].length < need[p] && !s.voids[p].contains(rules.effSuit(s, c))) {
           w.hands[p].add(c);
           placed = true;
           break;
@@ -103,7 +103,7 @@ class TrickAI {
       }
       return legal[r.nextInt(legal.length)];
     }
-    final lead = suitOf(s.trick.first);
+    final lead = rules.effSuit(s, s.trick.first);
     // Şu an kazanan kart
     var best = s.trick.first;
     var bestIx = 0;
@@ -114,9 +114,9 @@ class TrickAI {
       }
     }
     final winnerSeat = (s.leader + bestIx) % s.seats;
-    final partnerWinning = rules.partnerships && winnerSeat == s.partnerOf(seat);
-    int low(KCard a, KCard b) => (rules.strength(a) + (suitOf(a) == s.trump ? 20 : 0))
-        .compareTo(rules.strength(b) + (suitOf(b) == s.trump ? 20 : 0));
+    final partnerWinning = winnerSeat != seat && rules.teammates(s, seat, winnerSeat);
+    int low(KCard a, KCard b) => (rules.strength(a) + (rules.isTrump(s, a) ? 40 : 0))
+        .compareTo(rules.strength(b) + (rules.isTrump(s, b) ? 40 : 0));
     final sorted = List.of(legal)..sort(low);
     if (rules.avoidIn(s)) {
       final safe = sorted.where((c) => !rules.beats(s, c, best, lead)).toList();
