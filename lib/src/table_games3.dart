@@ -2,7 +2,6 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
-import 'kart_texts.dart';
 import 'table_engine.dart';
 import 'table_games2.dart' show rankName;
 
