@@ -6,11 +6,11 @@ void main() {
   final games = <String, TableGameRules>{
     'gin': TableGameRules(gameId: 'gin', rulesFor: (_) => const GinRummyRules()),
     'remi': TableGameRules(gameId: 'remi', rulesFor: (_) => const RummyRules()),
-    'konken': TableGameRules(gameId: 'konken', rulesFor: (_) => const RummyRules(players: 3, handSize: 13, decks: 2, openMin: 51)),
+    'konken': TableGameRules(gameId: 'konken', aiScale: 0.5, rulesFor: (_) => const RummyRules(players: 3, handSize: 13, decks: 2, openMin: 51)),
     'asamali': TableGameRules(
-        gameId: 'asamali', rulesFor: (d) => RummyRules(players: 3, handSize: 10, contract: d <= 3 ? const [false, false] : (d <= 6 ? const [false, true] : const [true, true]))),
+        gameId: 'asamali', aiScale: 0.4, rulesFor: (d) => RummyRules(players: 3, handSize: 10, contract: d <= 3 ? const [false, false] : (d <= 6 ? const [false, true] : const [true, true]))),
     'kanasta': TableGameRules(gameId: 'kanasta', rulesFor: (_) => const CanastaRules()),
-    'elayak': TableGameRules(gameId: 'elayak', rulesFor: (_) => const CanastaRules(handAndFoot: true)),
+    'elayak': TableGameRules(gameId: 'elayak', aiScale: 0.6, rulesFor: (_) => const CanastaRules(handAndFoot: true)),
     'cribbage': TableGameRules(gameId: 'cribbage', rulesFor: (_) => const CribbageRules()),
     'durak': TableGameRules(gameId: 'durak', rulesFor: (_) => const DurakRules()),
   };

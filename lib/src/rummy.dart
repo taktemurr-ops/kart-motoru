@@ -248,7 +248,7 @@ class RummyRules extends TableRules {
       var steps = 0;
       bool go(int slot) {
         if (slot == con.length) return true;
-        if (++steps > 5000) return false;
+        if (++steps > 600) return false;
         for (final m in ms) {
           if (isRunMeld(m, minLen: runMin) != con[slot] || (!con[slot] && !isSetMeld(m))) continue;
           if (m.any(used.contains)) continue;

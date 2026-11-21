@@ -38,7 +38,10 @@ class TableGameRules extends GameRules<TableLevel> {
   final TableGoal Function(int difficulty) goalFor;
   final int levels;
 
-  TableGameRules({required this.gameId, required this.rulesFor, TableGoal Function(int)? goalFor, this.levels = 50000})
+  /// Ağır oyunlarda yapay zekâ deneme sayısını küçültmek için çarpan.
+  final double aiScale;
+
+  TableGameRules({required this.gameId, required this.rulesFor, TableGoal Function(int)? goalFor, this.levels = 50000, this.aiScale = 1})
       : goalFor = goalFor ?? ((_) => TableGoal.win);
 
   @override
@@ -67,7 +70,7 @@ class TableGameRules extends GameRules<TableLevel> {
     final r = SeededRandom(mixSeed([spec.seed, 3131]));
     final deck = rules.deck();
     shuffleCards(deck, r);
-    return TableLevel(rules, rules.deal(deck, r.nextInt(rules.seats)), goalFor(d), spec.seed, d, samplesFor(d));
+    return TableLevel(rules, rules.deal(deck, r.nextInt(rules.seats)), goalFor(d), spec.seed, d, (samplesFor(d) * aiScale).round());
   }
 
   static TableState simulate(TableLevel l, {int seat0Samples = 16, int seed = 7}) {
@@ -83,7 +86,7 @@ class TableGameRules extends GameRules<TableLevel> {
 
   @override
   Validation validate(TableLevel level, LevelSpec spec) {
-    final end = simulate(level);
+    final end = simulate(level, seat0Samples: (16 * aiScale).round().clamp(4, 16));
     if (!end.over) return const Validation.fail('did not finish');
     if (!level.goal.check(level.rules, end)) return const Validation.fail('goal not reached');
     return Validation.ok(end.captured[0].length);
