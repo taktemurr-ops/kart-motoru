@@ -30,3 +30,5 @@ export 'src/table_view.dart';
 export 'src/memory_engine.dart';
 export 'src/memory_rules.dart';
 export 'src/memory_view.dart';
+export 'src/realtime.dart';
+export 'src/realtime_view.dart';
