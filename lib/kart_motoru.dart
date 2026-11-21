@@ -10,3 +10,8 @@ export 'src/solitaire_view.dart';
 export 'src/special_variants.dart';
 export 'src/tableau_variant.dart';
 export 'src/texts.dart';
+export 'src/trick_ai.dart';
+export 'src/trick_engine.dart';
+export 'src/trick_rules.dart';
+export 'src/trick_view.dart';
+export 'src/trick_games.dart';
