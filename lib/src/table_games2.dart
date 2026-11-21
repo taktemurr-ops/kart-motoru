@@ -322,11 +322,13 @@ class GoFishRules extends TableRules {
     final h = s.hands[s.turn];
     if (h.isEmpty) return const [TAction(2)];
     final ranks = {for (final c in h) rankOf(c)}.toList()..sort();
-    return [
+    final out = [
       for (var p = 0; p < seats; p++)
         if (p != s.turn && s.hands[p].isNotEmpty)
           for (final r in ranks) TAction(0, const [], p * 100 + r),
     ];
+    // Sorulacak kimse kalmadıysa yalnızca çekilebilir.
+    return out.isEmpty ? const [TAction(2)] : out;
   }
 
   @override
@@ -338,7 +340,8 @@ class GoFishRules extends TableRules {
   }
 
   void _checkOver(TableState s) {
-    if (s.piles[1].length >= 52 || (s.piles[0].isEmpty && s.hands.every((h) => h.isEmpty))) s.over = true;
+    final holders = s.hands.where((h) => h.isNotEmpty).length;
+    if (s.piles[1].length >= 52 || (s.piles[0].isEmpty && holders <= 1)) s.over = true;
   }
 
   @override
