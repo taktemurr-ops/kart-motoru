@@ -240,7 +240,7 @@ class TriPeaksVariant extends _CoveredVariant {
 }
 
 /// Golf: yedi sütun; sütunların üstündeki kartı atık kartından bir büyük ya
-/// da bir küçükse at. Papazın üstüne kart gelmez (sarma yok).
+/// da bir küçükse at.
 class GolfVariant extends SolitaireVariant {
   final bool wrap;
   GolfVariant({this.wrap = false});
@@ -271,7 +271,6 @@ class GolfVariant extends SolitaireVariant {
 
   bool _adjacent(KCard a, KCard b) {
     final d = (rankOf(a) - rankOf(b)).abs();
-    if (!wrap && rankOf(b) == 13) return false;
     return d == 1 || (wrap && d == 12);
   }
 

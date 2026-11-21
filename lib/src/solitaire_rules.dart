@@ -34,7 +34,7 @@ class SolitaireRules extends GameRules<SolLevel> {
   SolitaireRules({
     required this.gameId,
     required this.variantFor,
-    this.nodeCap = 60000,
+    this.nodeCap = 25000,
     this.levels = 100000,
     this.customCheck,
     this.dealOverride,

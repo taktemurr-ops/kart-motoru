@@ -19,6 +19,7 @@ void playOut(SolitaireRules rules, int lv) {
   final gl = rules.build(planner.spec(lv));
   final ms = sw.elapsedMilliseconds;
   expect(gl.validation.ok, isTrue, reason: '${rules.gameId} $lv');
+  expect(gl.spec.difficulty, planner.spec(lv).difficulty, reason: '${rules.gameId} $lv kolaylaştırıldı');
   final l = gl.puzzle;
   final g = SolGame(l.variant, l.start);
   if (rules.customCheck == null) {
@@ -47,7 +48,7 @@ void main() {
     rulesFor('scorpion', scorpion),
     rulesFor('forty', fortyThieves),
     rulesFor('canfield', canfield),
-    rulesFor('pyramid', (d) => PyramidVariant(redealsAllowed: d >= 7 ? 1 : 2)),
+    rulesFor('pyramid', (d) => PyramidVariant(redealsAllowed: d >= 9 ? 1 : 2)),
     rulesFor('tripeaks', (d) => TriPeaksVariant(wrap: d < 8)),
     rulesFor('golf', (d) => GolfVariant(wrap: d < 5)),
     rulesFor('accordion', (d) => AccordionVariant(target: (12 - d).clamp(3, 11))),
@@ -56,7 +57,7 @@ void main() {
 
   for (final r in all) {
     test('${r.gameId}: bölümler çözülür', () {
-      for (final lv in [1, 150, 2400, 49999, 99999]) {
+      for (final lv in [1, 150, 2400, 7777, 31313, 49999, 64000, 99999]) {
         playOut(r, lv);
       }
     });

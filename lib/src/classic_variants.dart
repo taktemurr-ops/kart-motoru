@@ -20,13 +20,13 @@ TableauVariant freeCell(int d) => TableauVariant(
       build: Build.altColor,
       pick: Pick.supermove,
       empty: Empty.any,
-      cells: d >= 9 ? 3 : 4,
+      cells: d >= 10 ? 3 : 4,
     );
 
-/// Spider: kolayda tek renk, ortada iki renk, en zorda dört renk.
+/// Spider: kolayda tek renk, sonra iki renk.
 TableauVariant spider(int d) => TableauVariant(
       decks: 2,
-      suits: d <= 5 ? const [0] : (d <= 8 ? const [0, 1] : const [0, 1, 2, 3]),
+      suits: d <= 4 ? const [0] : const [0, 1],
       dealDown: const [5, 5, 5, 5, 4, 4, 4, 4, 4, 4],
       dealUp: List.filled(10, 1),
       build: Build.anySuit,
@@ -62,10 +62,10 @@ TableauVariant fortyThieves(int d) => TableauVariant(
       dealDown: List.filled(10, 0),
       dealUp: List.filled(10, 4),
       build: Build.sameSuit,
-      pick: d <= 4 ? Pick.supermove : Pick.single,
+      pick: Pick.supermove,
       empty: Empty.any,
       draw: 1,
-      redeals: d <= 3 ? 1 : 0,
+      redeals: d <= 5 ? 2 : 1,
     );
 
 TableauVariant canfield(int d) => TableauVariant(
