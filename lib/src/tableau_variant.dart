@@ -57,6 +57,50 @@ class TableauVariant extends SolitaireVariant {
     this.noEmptyForDeal = false,
   }) : seqBuild = seqBuild ?? build;
 
+  /// Ayarlardan birkaçını değiştirilmiş yeni bir tür (solitaire paketi için).
+  TableauVariant copyWith({
+    int? decks,
+    List<int>? suits,
+    List<int>? dealDown,
+    List<int>? dealUp,
+    Build? build,
+    Build? seqBuild,
+    Pick? pick,
+    Empty? empty,
+    int? cells,
+    int? reserve,
+    int? draw,
+    int? redeals,
+    bool? stockToTableau,
+    int? stockDealPiles,
+    bool? foundations,
+    bool? baseFromFirst,
+    bool? wrap,
+    bool? autoFillFromReserve,
+    bool? noEmptyForDeal,
+  }) =>
+      TableauVariant(
+        decks: decks ?? this.decks,
+        suits: suits ?? this.suits,
+        dealDown: dealDown ?? this.dealDown,
+        dealUp: dealUp ?? this.dealUp,
+        build: build ?? this.build,
+        seqBuild: seqBuild ?? this.seqBuild,
+        pick: pick ?? this.pick,
+        empty: empty ?? this.empty,
+        cells: cells ?? this.cells,
+        reserve: reserve ?? this.reserve,
+        draw: draw ?? this.draw,
+        redeals: redeals ?? this.redeals,
+        stockToTableau: stockToTableau ?? this.stockToTableau,
+        stockDealPiles: stockDealPiles ?? this.stockDealPiles,
+        foundations: foundations ?? this.foundations,
+        baseFromFirst: baseFromFirst ?? this.baseFromFirst,
+        wrap: wrap ?? this.wrap,
+        autoFillFromReserve: autoFillFromReserve ?? this.autoFillFromReserve,
+        noEmptyForDeal: noEmptyForDeal ?? this.noEmptyForDeal,
+      );
+
   int get tabCount => dealDown.length;
   int get foundationCount => 4 * decks;
 
