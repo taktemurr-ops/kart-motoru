@@ -60,7 +60,7 @@ class TableauVariant extends SolitaireVariant {
   int get tabCount => dealDown.length;
   int get foundationCount => 4 * decks;
 
-  int get _dealt => [for (var i = 0; i < tabCount; i++) dealDown[i] + dealUp[i]].fold(0, (a, b) => a + b) + reserve;
+  int get _dealt => [for (var i = 0; i < tabCount; i++) dealDown[i] + dealUp[i]].fold<int>(0, (a, b) => a + b) + reserve;
   late final bool hasStock = makeDeck().length - _dealt - (baseFromFirst ? 1 : 0) > 0;
   bool get hasWaste => hasStock && !stockToTableau;
 
@@ -73,7 +73,7 @@ class TableauVariant extends SolitaireVariant {
   late final int tabStart = foundStart + foundationCount + (reserve > 0 ? 1 : 0);
 
   @override
-  List<Card> makeDeck() => buildDeck(decks: decks, suits: suits);
+  List<KCard> makeDeck() => buildDeck(decks: decks, suits: suits);
 
   @override
   late final List<PileSpec> layout = _layout();
@@ -124,9 +124,9 @@ class TableauVariant extends SolitaireVariant {
   }
 
   @override
-  SolState deal(List<Card> shuffled) {
+  SolState deal(List<KCard> shuffled) {
     final n = layout.length;
-    final piles = List.generate(n, (_) => <Card>[]);
+    final piles = List.generate(n, (_) => <KCard>[]);
     final down = List<int>.filled(n, 0);
     var k = 0;
     if (reserve > 0) {
@@ -157,7 +157,7 @@ class TableauVariant extends SolitaireVariant {
 
   PileKind kindOf(int p) => layout[p].kind;
 
-  bool _follows(Card lower, Card upper, Build b) {
+  bool _follows(KCard lower, KCard upper, Build b) {
     // upper, lower'ın üstüne konur: upper bir küçük.
     final lr = rankOf(lower), ur = rankOf(upper);
     final ok = ur == lr - 1 || (wrap && lr == 1 && ur == 13);
@@ -171,7 +171,7 @@ class TableauVariant extends SolitaireVariant {
     };
   }
 
-  bool _isSequence(List<Card> p, int from) {
+  bool _isSequence(List<KCard> p, int from) {
     for (var i = from; i + 1 < p.length; i++) {
       if (!_follows(p[i], p[i + 1], seqBuild)) return false;
     }
@@ -217,7 +217,7 @@ class TableauVariant extends SolitaireVariant {
     }
   }
 
-  bool _toFoundation(SolState s, Card c, int to) {
+  bool _toFoundation(SolState s, KCard c, int to) {
     final f = s.piles[to];
     if (f.isEmpty) return rankOf(c) == baseRank(s);
     final t = f.last;

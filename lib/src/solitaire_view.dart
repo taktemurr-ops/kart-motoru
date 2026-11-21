@@ -14,7 +14,7 @@ import 'solitaire_rules.dart';
 
 /// Ekrandaki bir kart.
 class _Placed {
-  final Card card;
+  final KCard card;
   final int pile, index;
   final Rect rect;
   final bool up;
@@ -412,7 +412,7 @@ class _SlotPainter extends CustomPainter {
 }
 
 class _CardPainter extends CustomPainter {
-  final Card card;
+  final KCard card;
   final bool up;
   final CardStyle style;
   final bool highlight;

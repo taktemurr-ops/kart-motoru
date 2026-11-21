@@ -105,8 +105,8 @@ class PyramidVariant extends _CoveredVariant {
   double get boardHeight => 6 * 0.52 + 1.7 + 1.4;
 
   @override
-  SolState deal(List<Card> shuffled) {
-    final piles = <List<Card>>[for (var i = 0; i < 28; i++) [shuffled[i]]];
+  SolState deal(List<KCard> shuffled) {
+    final piles = <List<KCard>>[for (var i = 0; i < 28; i++) [shuffled[i]]];
     piles.add(shuffled.sublist(28));
     piles.add([]);
     piles.add([]);
@@ -209,15 +209,15 @@ class TriPeaksVariant extends _CoveredVariant {
   double get boardHeight => 3.4 + 1.4;
 
   @override
-  SolState deal(List<Card> shuffled) {
-    final piles = <List<Card>>[for (var i = 0; i < 28; i++) [shuffled[i]]];
+  SolState deal(List<KCard> shuffled) {
+    final piles = <List<KCard>>[for (var i = 0; i < 28; i++) [shuffled[i]]];
     piles.add(shuffled.sublist(29));
     piles.add([shuffled[28]]);
     piles.add([]);
     return SolState(piles, [...List.filled(18, 1), ...List.filled(10, 0), 23, 0, 0]);
   }
 
-  bool _adjacent(Card a, Card b) {
+  bool _adjacent(KCard a, KCard b) {
     final d = (rankOf(a) - rankOf(b)).abs();
     return d == 1 || (wrap && d == 12);
   }
@@ -262,14 +262,14 @@ class GolfVariant extends SolitaireVariant {
   double get boardHeight => 4.0 + 1.4;
 
   @override
-  SolState deal(List<Card> shuffled) {
-    final piles = <List<Card>>[for (var i = 0; i < _cols; i++) shuffled.sublist(i * 5, i * 5 + 5)];
+  SolState deal(List<KCard> shuffled) {
+    final piles = <List<KCard>>[for (var i = 0; i < _cols; i++) shuffled.sublist(i * 5, i * 5 + 5)];
     piles.add(shuffled.sublist(36));
     piles.add([shuffled[35]]);
     return SolState(piles, [...List.filled(_cols, 0), 16, 0]);
   }
 
-  bool _adjacent(Card a, Card b) {
+  bool _adjacent(KCard a, KCard b) {
     final d = (rankOf(a) - rankOf(b)).abs();
     if (!wrap && rankOf(b) == 13) return false;
     return d == 1 || (wrap && d == 12);
@@ -307,7 +307,7 @@ class GolfVariant extends SolitaireVariant {
   }
 
   @override
-  int progress(SolState s) => 35 - [for (var i = 0; i < _cols; i++) s.piles[i].length].fold(0, (a, b) => a + b);
+  int progress(SolState s) => 35 - [for (var i = 0; i < _cols; i++) s.piles[i].length].fold<int>(0, (a, b) => a + b);
 
   @override
   int get totalCards => 35;
@@ -336,7 +336,7 @@ class AccordionVariant extends SolitaireVariant {
   double get boardHeight => 3 * 1.55 + 1.4;
 
   @override
-  SolState deal(List<Card> shuffled) =>
+  SolState deal(List<KCard> shuffled) =>
       SolState([for (final c in shuffled) [c]], List.filled(52, 0));
 
   int _left(SolState s, int p, int steps) {
@@ -416,8 +416,8 @@ class ClockVariant extends SolitaireVariant {
   double get boardHeight => 6.2;
 
   @override
-  SolState deal(List<Card> shuffled) {
-    final piles = <List<Card>>[for (var i = 0; i < 13; i++) shuffled.sublist(i * 4, i * 4 + 4)];
+  SolState deal(List<KCard> shuffled) {
+    final piles = <List<KCard>>[for (var i = 0; i < 13; i++) shuffled.sublist(i * 4, i * 4 + 4)];
     final down = List<int>.filled(14, 4);
     // İlk kart: papaz yığınının üstü.
     piles.add([piles[12].removeLast()]);
@@ -453,7 +453,7 @@ class ClockVariant extends SolitaireVariant {
   bool isWon(SolState s) => s.piles[hand].isEmpty && s.down.every((d) => d == 0);
 
   @override
-  int progress(SolState s) => 52 - s.down.fold(0, (a, b) => a + b) - s.piles[hand].length;
+  int progress(SolState s) => 52 - s.down.fold<int>(0, (a, b) => a + b) - s.piles[hand].length;
 
   @override
   int get totalCards => 52;

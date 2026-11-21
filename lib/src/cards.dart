@@ -2,13 +2,13 @@ import 'package:studio_core/core/rng.dart';
 
 /// Kart: tek bir tamsayı. id = deste * 52 + renk * 13 + (değer - 1).
 /// Değer 1 (As) … 13 (Papaz). Renk sırası: 0 maça, 1 kupa, 2 karo, 3 sinek.
-typedef Card = int;
+typedef KCard = int;
 
-int rankOf(Card c) => c % 13 + 1;
-int suitOf(Card c) => (c ~/ 13) % 4;
-int deckOf(Card c) => c ~/ 52;
-bool isRed(Card c) => suitOf(c) == 1 || suitOf(c) == 2;
-Card makeCard(int rank, int suit, [int deck = 0]) => deck * 52 + suit * 13 + (rank - 1);
+int rankOf(KCard c) => c % 13 + 1;
+int suitOf(KCard c) => (c ~/ 13) % 4;
+int deckOf(KCard c) => c ~/ 52;
+bool isRed(KCard c) => suitOf(c) == 1 || suitOf(c) == 2;
+KCard makeCard(int rank, int suit, [int deck = 0]) => deck * 52 + suit * 13 + (rank - 1);
 
 const kSpades = 0, kHearts = 1, kDiamonds = 2, kClubs = 3;
 
@@ -23,9 +23,9 @@ String rankLabel(int rank) => switch (rank) {
 
 /// Deste kurucu. [suits] ile tek renkli (Spider) desteler, [ranks] ile kısa
 /// desteler (32, 36, 40, 48 kartlık) kurulur.
-List<Card> buildDeck({int decks = 1, List<int> suits = const [0, 1, 2, 3], List<int>? ranks}) {
+List<KCard> buildDeck({int decks = 1, List<int> suits = const [0, 1, 2, 3], List<int>? ranks}) {
   final rs = ranks ?? [for (var r = 1; r <= 13; r++) r];
-  final out = <Card>[];
+  final out = <KCard>[];
   // Az renkli destelerde 52 kart tamamlanır: aynı renk birkaç kez tekrar eder.
   final perDeck = 4 ~/ suits.length;
   var d = 0;
@@ -42,7 +42,7 @@ List<Card> buildDeck({int decks = 1, List<int> suits = const [0, 1, 2, 3], List<
   return out;
 }
 
-void shuffleCards(List<Card> cards, SeededRandom r) {
+void shuffleCards(List<KCard> cards, SeededRandom r) {
   for (var i = cards.length - 1; i > 0; i--) {
     final j = r.nextInt(i + 1);
     final t = cards[i];

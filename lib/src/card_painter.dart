@@ -90,7 +90,7 @@ void paintSuit(Canvas c, int suit, Rect r, Color color) {
 final _textCache = <String, TextPainter>{};
 
 TextPainter _label(String s, double size, Color color, {FontWeight w = FontWeight.w800}) {
-  final key = '$s|${size.toStringAsFixed(1)}|${color.toARGB32()}|${w.index}';
+  final key = '$s|${size.toStringAsFixed(1)}|${color.toARGB32()}|${w.value}';
   return _textCache.putIfAbsent(key, () {
     if (_textCache.length > 600) _textCache.clear();
     return TextPainter(
@@ -101,7 +101,7 @@ TextPainter _label(String s, double size, Color color, {FontWeight w = FontWeigh
 }
 
 /// Kartı [r] dikdörtgenine çizer.
-void paintCard(Canvas c, Rect r, Card card, {required bool faceUp, required CardStyle style, bool highlight = false, bool dim = false}) {
+void paintCard(Canvas c, Rect r, KCard card, {required bool faceUp, required CardStyle style, bool highlight = false, bool dim = false}) {
   final radius = Radius.circular(r.width * 0.10);
   final rr = RRect.fromRectAndRadius(r, radius);
   // Gölge
@@ -172,7 +172,7 @@ void _paintBack(Canvas c, RRect rr, CardStyle s) {
   c.drawPath(star, Paint()..color = Colors.white.withValues(alpha: 0.85));
 }
 
-void _paintFace(Canvas c, RRect rr, Card card, CardStyle s) {
+void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
   final r = rr.outerRect;
   final w = r.width;
   c.drawRRect(rr, Paint()..color = CardStyle.paper);

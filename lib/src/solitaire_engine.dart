@@ -19,7 +19,7 @@ class PileSpec {
 
 /// Oyun durumu: yığınlar ve her yığının alttaki kapalı kart sayısı.
 class SolState {
-  final List<List<Card>> piles;
+  final List<List<KCard>> piles;
   final List<int> down;
   int passes;
   int counter; // oyuna özel sayaç (ör. Spider'da tamamlanan seri)
@@ -27,10 +27,10 @@ class SolState {
   SolState(this.piles, this.down, {this.passes = 0, this.counter = 0});
 
   SolState copy() =>
-      SolState([for (final p in piles) List<Card>.of(p)], List<int>.of(down), passes: passes, counter: counter);
+      SolState([for (final p in piles) List<KCard>.of(p)], List<int>.of(down), passes: passes, counter: counter);
 
   bool faceUp(int pile, int index) => index >= down[pile];
-  Card? top(int pile) => piles[pile].isEmpty ? null : piles[pile].last;
+  KCard? top(int pile) => piles[pile].isEmpty ? null : piles[pile].last;
 
   String key() {
     final b = StringBuffer();
@@ -88,9 +88,9 @@ abstract class SolitaireVariant {
   double get boardWidth;
   double get boardHeight;
 
-  List<Card> makeDeck() => buildDeck();
+  List<KCard> makeDeck() => buildDeck();
 
-  SolState deal(List<Card> shuffled);
+  SolState deal(List<KCard> shuffled);
 
   /// Toplam kart sayısı (ilerleme için).
   int get totalCards => makeDeck().length;
