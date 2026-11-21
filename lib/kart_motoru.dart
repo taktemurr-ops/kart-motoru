@@ -9,3 +9,4 @@ export 'src/solitaire_rules.dart';
 export 'src/solitaire_view.dart';
 export 'src/special_variants.dart';
 export 'src/tableau_variant.dart';
+export 'src/texts.dart';
