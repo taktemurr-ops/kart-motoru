@@ -61,7 +61,7 @@ class SkatRules extends TrickRules {
     return power(s, a) > power(s, b);
   }
 
-  int _high(TrickState s) => s.bids.whereType<int>().fold(0, (a, b) => b > a ? b : a);
+  int _high(TrickState s) => s.bids.whereType<int>().fold<int>(0, (a, b) => b > a ? b : a);
 
   @override
   List<int> legalBids(TrickState s, int seat) => [0, for (var g = _high(s) + 1; g <= grand; g++) g];
@@ -146,7 +146,7 @@ class SkatRules extends TrickRules {
   @override
   bool avoidIn(TrickState s) => s.contract == ramsch || (_null(s) && s.turn == s.declarer);
 
-  List<int> points(TrickState s) => [for (final t in s.taken) t.fold(0, (a, c) => a + cardPoints(c))];
+  List<int> points(TrickState s) => [for (final t in s.taken) t.fold<int>(0, (a, c) => a + cardPoints(c))];
 
   @override
   List<int> handScores(TrickState s) {
@@ -166,7 +166,7 @@ class SkatRules extends TrickRules {
     final d = s.declarer;
     final game = bidLabel(s.contract, lang);
     if (_null(s)) return '$game  ·  ${kt(lang, 'declarer')}: ${s.tricks[d]}';
-    final def = p.fold(0, (a, b) => a + b) - p[d];
+    final def = p.fold<int>(0, (a, b) => a + b) - p[d];
     return '$game  ·  ${kt(lang, 'declarer')}: ${p[d]} / 61  ·  ${Strings.tx(lang, 'Onlar', 'Them')}: $def';
   }
 }
@@ -259,7 +259,7 @@ class SheepsheadRules extends TrickRules {
   @override
   bool avoidIn(TrickState s) => s.declarer < 0;
 
-  List<int> points(TrickState s) => [for (final t in s.taken) t.fold(0, (a, c) => a + cardPoints(c))];
+  List<int> points(TrickState s) => [for (final t in s.taken) t.fold<int>(0, (a, c) => a + cardPoints(c))];
 
   @override
   List<int> handScores(TrickState s) {
@@ -276,7 +276,7 @@ class SheepsheadRules extends TrickRules {
     final p = points(s);
     final d = s.declarer;
     if (d < 0) return '${kt(lang, 'least')}: ${p.join(' · ')}';
-    final def = p.fold(0, (a, b) => a + b) - p[d];
+    final def = p.fold<int>(0, (a, b) => a + b) - p[d];
     return '${kt(lang, 'declarer')}: ${p[d]} / 61  ·  ${Strings.tx(lang, 'Onlar', 'Them')}: $def';
   }
 }
@@ -324,7 +324,7 @@ class ContractBridgeRules extends TrickRules {
   @override
   bool biddingOver(TrickState s) => (s.contract > 0 && s.extra >= 3) || (s.contract == 0 && s.extra >= 4);
 
-  static int hcp(List<KCard> h) => h.fold(0, (a, c) => a + (const {1: 4, 13: 3, 12: 2, 11: 1}[rankOf(c)] ?? 0));
+  static int hcp(List<KCard> h) => h.fold<int>(0, (a, c) => a + (const {1: 4, 13: 3, 12: 2, 11: 1}[rankOf(c)] ?? 0));
 
   @override
   int aiBid(TrickState s, int seat, SeededRandom r) {
@@ -345,7 +345,7 @@ class ContractBridgeRules extends TrickRules {
       }
       st = _strainSuit.indexOf(best);
     }
-    if (partnerIn && s.contract > 0 && strain(partnerBid!) < 4 && lens[_strainSuit[strain(partnerBid)]] >= 3) {
+    if (partnerIn && s.contract > 0 && strain(partnerBid) < 4 && lens[_strainSuit[strain(partnerBid)]] >= 3) {
       st = strain(partnerBid);
     }
     final maxLevel = ((team - 20) ~/ 3 + 1).clamp(1, 7);
@@ -498,7 +498,7 @@ class BezikRules extends TrickRules {
   List<int> points(TrickState s) => [
         for (var p = 0; p < seats; p++)
           (s.bids[p] ?? 0) +
-              s.taken[p].fold(0, (a, c) => a + cardPoints(c)) +
+              s.taken[p].fold<int>(0, (a, c) => a + cardPoints(c)) +
               (s.phase == TrickPhase.over && s.lastWinner == p ? 10 : 0),
       ];
 

@@ -320,7 +320,7 @@ class PinochleRules extends TrickRules {
   @override
   int cardPoints(KCard c) => const {1: 1, 10: 1, 13: 1}[rankOf(c)] ?? 0;
 
-  int _high(TrickState s) => s.bids.whereType<int>().where((b) => b < trumpBase).fold(0, (a, b) => b > a ? b : a);
+  int _high(TrickState s) => s.bids.whereType<int>().where((b) => b < trumpBase).fold<int>(0, (a, b) => b > a ? b : a);
 
   @override
   List<int> legalBids(TrickState s, int seat) {
@@ -471,7 +471,7 @@ class PinochleRules extends TrickRules {
   List<int> counters(TrickState s) {
     final t = [0, 0];
     for (var p = 0; p < seats; p++) {
-      t[p % 2] += s.taken[p].fold(0, (a, c) => a + cardPoints(c));
+      t[p % 2] += s.taken[p].fold<int>(0, (a, c) => a + cardPoints(c));
     }
     if (s.phase == TrickPhase.over && s.lastWinner >= 0) t[s.lastWinner % 2] += 1;
     return t;
