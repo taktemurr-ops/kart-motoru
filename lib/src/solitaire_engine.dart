@@ -212,6 +212,10 @@ class SolGame {
   int moves = 0;
   final List<String> _history = [];
 
+  // İpucu planı: bulunan çözüm, oyuncu ondan sapmadıkça yeniden çözülmez.
+  List<SolMove>? _plan;
+  String? _planKey;
+
   SolGame(this.v, SolState start) : s = start.copy();
 
   bool get won => v.isWon(s);
@@ -223,10 +227,18 @@ class SolGame {
     } else if (!v.canPick(s, m.from, m.index) || !v.canDrop(s, m.from, m.index, m.to)) {
       return false;
     }
+    final before = s.key();
     _history.add(jsonEncode(s.toJson()));
     if (_history.length > 400) _history.removeAt(0);
     v.apply(s, m);
     moves++;
+    final plan = _plan;
+    if (plan != null && plan.isNotEmpty && _planKey == before && plan.first == m) {
+      plan.removeAt(0);
+      _planKey = s.key();
+    } else {
+      _plan = null;
+    }
     return true;
   }
 
@@ -234,13 +246,20 @@ class SolGame {
     if (_history.isEmpty) return;
     s = SolState.fromJson(jsonDecode(_history.removeLast()) as Map<String, dynamic>);
     moves++;
+    _plan = null;
   }
 
   bool get stuck => v.legalMoves(s).isEmpty;
 
-  SolMove? hint({int cap = 30000}) {
+  SolMove? hint({int cap = 50000}) {
+    final plan = _plan;
+    if (plan != null && plan.isNotEmpty && _planKey == s.key()) return plan.first;
     final r = solveSolitaire(v, s, nodeCap: cap);
-    if (r.solved && r.moves!.isNotEmpty) return r.moves!.first;
+    if (r.solved && r.moves!.isNotEmpty) {
+      _plan = List.of(r.moves!);
+      _planKey = s.key();
+      return _plan!.first;
+    }
     // Çözüm bulunamadıysa en öncelikli yasal hamle.
     final l = v.legalMoves(s).where((m) => !v.useless(s, m)).toList();
     return l.isEmpty ? null : l.first;
