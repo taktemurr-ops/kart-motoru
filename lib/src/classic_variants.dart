@@ -11,7 +11,7 @@ TableauVariant klondike(int d) => TableauVariant(
       pick: Pick.ordered,
       empty: Empty.king,
       draw: d >= 7 ? 3 : 1,
-      redeals: d >= 9 ? 2 : -1,
+      redeals: -1,
     );
 
 TableauVariant freeCell(int d) => TableauVariant(
@@ -23,10 +23,10 @@ TableauVariant freeCell(int d) => TableauVariant(
       cells: d >= 10 ? 3 : 4,
     );
 
-/// Spider: kolayda tek renk, sonra iki renk.
+/// Spider: 1–6 tek renk, 7–10 iki renk.
 TableauVariant spider(int d) => TableauVariant(
       decks: 2,
-      suits: d <= 4 ? const [0] : const [0, 1],
+      suits: d <= 6 ? const [0] : const [0, 1],
       dealDown: const [5, 5, 5, 5, 4, 4, 4, 4, 4, 4],
       dealUp: List.filled(10, 1),
       build: Build.anySuit,

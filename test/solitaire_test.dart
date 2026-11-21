@@ -5,12 +5,13 @@ import 'package:studio_core/core/level_plan.dart';
 import 'package:studio_core/core/rng.dart';
 
 SolitaireRules rulesFor(String id, SolitaireVariant Function(int) v,
-        {SolState Function(SolitaireVariant, SeededRandom)? deal, bool Function(SolLevel)? check}) =>
+        {SolState Function(SolitaireVariant, SeededRandom)? deal, bool Function(SolLevel)? check, int cap = 25000}) =>
     SolitaireRules(
       gameId: id,
       variantFor: v,
       dealOverride: deal,
       customCheck: check,
+      nodeCap: cap,
     );
 
 void playOut(SolitaireRules rules, int lv) {
@@ -43,14 +44,14 @@ void main() {
   final all = <SolitaireRules>[
     rulesFor('klondike', klondike),
     rulesFor('freecell', freeCell),
-    rulesFor('spider', spider),
+    rulesFor('spider', spider, cap: 40000),
     rulesFor('yukon', yukon),
     rulesFor('scorpion', scorpion),
     rulesFor('forty', fortyThieves),
     rulesFor('canfield', canfield),
     rulesFor('pyramid', (d) => PyramidVariant(redealsAllowed: d >= 9 ? 1 : 2)),
     rulesFor('tripeaks', (d) => TriPeaksVariant(wrap: d < 8)),
-    rulesFor('golf', (d) => GolfVariant(wrap: d < 5)),
+    rulesFor('golf', (d) => GolfVariant(wrap: d < 7), cap: 60000),
     rulesFor('accordion', (d) => AccordionVariant(target: (12 - d).clamp(3, 11))),
     rulesFor('clock', (d) => ClockVariant(), deal: (v, r) => clockDeal(v, r), check: (l) => (l.variant as ClockVariant).wins(l.start)),
   ];

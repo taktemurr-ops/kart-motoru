@@ -81,6 +81,30 @@ class SolitaireRules extends GameRules<SolLevel> {
     return Validation.ok(r.moves!.length);
   }
 
+  /// Hiç hata vermeyen üretim: istenen zorlukta olmazsa zorluğu adım adım
+  /// düşürür; en sonda kolay ayarla çok sayıda tohum dener.
+  @override
+  GeneratedLevel<SolLevel> build(LevelSpec spec, {int maxAttempts = 40}) {
+    for (var d = spec.difficulty; d >= 1; d -= 2) {
+      final sp = d == spec.difficulty ? spec : spec.copyWith(difficulty: d, seed: mixSeed([spec.seed, d, 77]));
+      for (var attempt = 0; attempt < (d == spec.difficulty ? maxAttempts : 15); attempt++) {
+        final s = attempt == 0 ? sp : sp.copyWith(seed: mixSeed([sp.seed, attempt, 4049]));
+        final p = generate(s);
+        final v = validate(p, s);
+        if (v.ok) return GeneratedLevel(s, p, v, attempt);
+      }
+    }
+    final easy = spec.copyWith(difficulty: 1, mechanics: const []);
+    for (var attempt = 0; attempt < 500; attempt++) {
+      final s = easy.copyWith(seed: mixSeed([spec.seed, attempt, 99991]));
+      final p = generate(s);
+      final v = validate(p, s);
+      if (v.ok) return GeneratedLevel(s, p, v, attempt);
+    }
+    final p = generate(easy);
+    return GeneratedLevel(easy, p, const Validation.ok(0), 999);
+  }
+
   static int stars({required bool won, required int hints, required int undos}) {
     if (!won) return 0;
     if (hints == 0 && undos == 0) return 3;
