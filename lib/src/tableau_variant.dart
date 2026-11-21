@@ -371,6 +371,11 @@ class TableauVariant extends SolitaireVariant {
     if (fk == PileKind.cell && tk == PileKind.tableau) return 3;
     if (tk == PileKind.tableau && s.piles[m.to].isEmpty) return 6;
     if (tk == PileKind.cell) return 7;
+    // Aynı renge (simgeye) bağlamak daha değerli.
+    if (fk == PileKind.tableau && tk == PileKind.tableau && s.piles[m.to].isNotEmpty &&
+        suitOf(s.piles[m.to].last) == suitOf(s.piles[m.from][m.index])) {
+      return 4;
+    }
     return 5;
   }
 
@@ -385,6 +390,14 @@ class TableauVariant extends SolitaireVariant {
     if (m.index == 0 && s.piles[m.to].isEmpty) return true;
     // Zaten doğal yerinde duran seriyi başka sütuna kaydırmak.
     if (m.index > 0 && m.index > s.down[m.from] && _follows(src[m.index - 1], src[m.index], seqBuild)) {
+      return true;
+    }
+    // Yanal kaydırma: altındaki kart zaten uygun ve hedefte renk kazancı yok.
+    if (m.index > 0 &&
+        m.index > s.down[m.from] &&
+        _follows(src[m.index - 1], src[m.index], build) &&
+        s.piles[m.to].isNotEmpty &&
+        suitOf(s.piles[m.to].last) != suitOf(src[m.index])) {
       return true;
     }
     return false;

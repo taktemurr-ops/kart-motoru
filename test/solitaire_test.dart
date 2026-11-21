@@ -51,7 +51,7 @@ void main() {
     rulesFor('canfield', canfield),
     rulesFor('pyramid', (d) => PyramidVariant(redealsAllowed: d >= 9 ? 1 : 2)),
     rulesFor('tripeaks', (d) => TriPeaksVariant(wrap: d < 8)),
-    rulesFor('golf', (d) => GolfVariant(wrap: d < 7), cap: 60000),
+    rulesFor('golf', (d) => GolfVariant(wrap: true), cap: 60000),
     rulesFor('accordion', (d) => AccordionVariant(target: (12 - d).clamp(3, 11))),
     rulesFor('clock', (d) => ClockVariant(), deal: (v, r) => clockDeal(v, r), check: (l) => (l.variant as ClockVariant).wins(l.start)),
   ];
