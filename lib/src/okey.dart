@@ -169,6 +169,147 @@ int okeyGroupValue(List<int> meanings) {
   return -1;
 }
 
+/// Elin en iyi bölünüşü: perlere giren en çok taş ve dışarıda kalan doğal
+/// taşların anlamları. Durumlar not alınarak bir kez aranır.
+(int, List<int>) okeyCoverPlan(List<int> meanings) {
+  final cnt = List.filled(52, 0);
+  var w = 0;
+  for (final m in meanings) {
+    if (m < 0) {
+      w++;
+    } else {
+      cnt[m]++;
+    }
+  }
+  final memo = <(int, int, int), int>{};
+  (int, int, int) key(int wl) {
+    var lo = 0, hi = 0;
+    for (var i = 0; i < 26; i++) {
+      lo |= cnt[i] << (2 * i);
+      hi |= cnt[26 + i] << (2 * i);
+    }
+    return (lo, hi, wl);
+  }
+
+  // Bir durumdaki seçenekler: (kullanılan doğal taşlar, kullanılan joker, kapsanan).
+  List<(List<int>, int, int)> options(int wl) {
+    var f = -1;
+    for (var i = 0; i < 52; i++) {
+      if (cnt[i] > 0) {
+        f = i;
+        break;
+      }
+    }
+    if (f < 0) return const [];
+    final out = <(List<int>, int, int)>[([f], 0, 0)];
+    final c = f ~/ 13, n0 = f % 13;
+    final others = [for (var oc = 0; oc < 4; oc++) if (oc != c && cnt[oc * 13 + n0] > 0) oc * 13 + n0];
+    for (var mask = 0; mask < 1 << others.length; mask++) {
+      final pick = [f, for (var k = 0; k < others.length; k++) if ((mask >> k) & 1 == 1) others[k]];
+      for (var wu = 0; wu <= wl; wu++) {
+        final size = pick.length + wu;
+        if (size >= 3 && size <= 4) out.add((pick, wu, size));
+      }
+    }
+    // Seriler: f'nin önü jokerle doldurulabilir, arkası taş ya da jokerle uzar.
+    for (var st = n0 - (wl < n0 ? wl : n0); st <= n0; st++) {
+      final used = <int>[f];
+      var wu = n0 - st;
+      cnt[f]--;
+      final taken = <int>[];
+      for (var e = n0 + 1; e <= 13; e++) {
+        if (e == 13 && st == 0) break;
+        final idx = c * 13 + e % 13;
+        if (cnt[idx] > 0) {
+          cnt[idx]--;
+          taken.add(idx);
+          used.add(idx);
+        } else if (wu < wl) {
+          wu++;
+        } else {
+          break;
+        }
+        final len = e - st + 1;
+        if (len >= 3) out.add((List.of(used), wu, len));
+      }
+      if (n0 - st + 1 >= 3) out.add(([f], n0 - st, n0 - st + 1));
+      for (final x in taken) {
+        cnt[x]++;
+      }
+      cnt[f]++;
+    }
+    if (n0 == 0) {
+      // 1 sonda: … 12, 13, 1.
+      for (var st = 11; st >= 1; st--) {
+        final used = <int>[f];
+        var wu = 0;
+        var ok = true;
+        for (var pos = st; pos <= 12; pos++) {
+          final idx = c * 13 + pos;
+          final have = cnt[idx] - used.where((x) => x == idx).length;
+          if (have > 0) {
+            used.add(idx);
+          } else if (wu < wl) {
+            wu++;
+          } else {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) out.add((used, wu, 14 - st));
+      }
+    }
+    return out;
+  }
+
+  int best(int wl) {
+    final k = key(wl);
+    final m = memo[k];
+    if (m != null) return m;
+    var v = 0;
+    for (final (used, wu, cov) in options(wl)) {
+      for (final x in used) {
+        cnt[x]--;
+      }
+      final r = cov + best(wl - wu);
+      for (final x in used) {
+        cnt[x]++;
+      }
+      if (r > v) v = r;
+    }
+    memo[k] = v;
+    return v;
+  }
+
+  final total = best(w);
+  // Çözümü yeniden kur; dışarıda kalan taşları topla.
+  final skipped = <int>[];
+  var wl = w;
+  while (true) {
+    final opts = options(wl);
+    if (opts.isEmpty) break;
+    final target = best(wl);
+    var found = false;
+    for (final (used, wu, cov) in opts) {
+      for (final x in used) {
+        cnt[x]--;
+      }
+      final r = cov + best(wl - wu);
+      if (r == target) {
+        if (cov == 0) skipped.add(used.first);
+        wl -= wu;
+        found = true;
+        break;
+      }
+      for (final x in used) {
+        cnt[x]++;
+      }
+    }
+    if (!found) break;
+  }
+  return (total, skipped);
+}
+
 /// Ucuz taş değeri: komşuları (aynı sayı başka renk, aynı renk ±1/±2) çok olan
 /// taş tutulur. Joker hiç atılmaz.
 int okeyKeepScore(List<int> m, int i) {
@@ -370,25 +511,39 @@ class OkeyRules extends TableRules {
     if (s.vars[0] == 0) {
       if (s.piles[1].isNotEmpty) {
         final t = s.piles[1].last;
-        final m = meanings(s, [...h, t]);
-        if (m.last < 0 || okeyKeepScore(m, m.length - 1) >= 6) return const TAction(1, [], 1);
+        if (okeyMeaning(t, kind(s)) < 0) return const TAction(1, [], 1);
+        final before = okeyCoverPlan(meanings(s, h)).$1;
+        final after = okeyCoverPlan(meanings(s, [...h, t])).$1;
+        if (after > before) return const TAction(1, [], 1);
       }
       return const TAction(1, [], 0);
     }
     final m = meanings(s, h);
-    var best = 0, bv = 1 << 30;
+    final (_, skipped) = okeyCoverPlan(m);
+    if (skipped.length <= 1) {
+      for (final t in h) {
+        if ((skipped.isEmpty || t % 52 == skipped.first || (isOkeyFalseJoker(t) && kind(s) == skipped.first)) && _finishKind(s, h, t) > 0) {
+          return TAction(9, [t]);
+        }
+      }
+    }
+    if (okeyPairCount(m) >= 7) {
+      for (final t in h) {
+        if (_finishKind(s, h, t) > 0) return TAction(9, [t]);
+      }
+    }
+    // Dışarıda kalanlardan en az komşusu olanı at.
+    var best = -1, bv = 1 << 30;
     for (var i = 0; i < h.length; i++) {
-      final v = okeyKeepScore(m, i) * 4 + r.nextInt(3);
+      if (m[i] < 0) continue;
+      final out = skipped.contains(m[i]);
+      final v = okeyKeepScore(m, i) * 4 + (out ? 0 : 1000) + r.nextInt(3);
       if (v < bv) {
         bv = v;
         best = i;
       }
     }
-    // Bitirebiliyorsa bitir (önce en kötü taşla, sonra hepsini dene).
-    if (_finishKind(s, h, h[best]) > 0) return TAction(9, [h[best]]);
-    for (final t in h) {
-      if (_finishKind(s, h, t) > 0) return TAction(9, [t]);
-    }
+    if (best < 0) best = 0;
     return TAction(0, [h[best]]);
   }
 

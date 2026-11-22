@@ -22,6 +22,29 @@ void main() {
     expect(okeyGroupValue([t(1, 12), t(2, 13), t(1, 1)]), -1);
   });
 
+  test('okey: en iyi bölünüş', () {
+    // 1-2-3 sarı + 7 üç renk + yalnız 11 kırmızı
+    final (cov, out) = okeyCoverPlan([t(0, 1), t(0, 2), t(0, 3), t(0, 7), t(1, 7), t(2, 7), t(3, 11)]);
+    expect(cov, 6);
+    expect(out, [t(3, 11)]);
+    expect(okeyCoverPlan([t(1, 4), -1, t(1, 6)]).$1, 3);
+  });
+
+  test('mahjong: shanten', () {
+    List<int> cnt(List<int> ks) {
+      final c = List.filled(34, 0);
+      for (final k in ks) {
+        c[k]++;
+      }
+      return c;
+    }
+
+    // Tamam: -1; bir eksik: 0.
+    expect(mjShanten(cnt([0, 1, 2, 9, 10, 11, 18, 18, 18, 27, 27, 27, 33, 33]), 4), -1);
+    expect(mjShanten(cnt([0, 1, 2, 9, 10, 11, 18, 18, 18, 27, 27, 27, 33]), 4), 0);
+    expect(mjShanten(cnt([0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 28, 29, 30]), 4) >= 5, isTrue);
+  });
+
   test('mahjong: tamam el', () {
     final c = List.filled(34, 0);
     for (final k in [0, 1, 2, 9, 10, 11, 18, 18, 18, 27, 27, 27, 33, 33]) {
@@ -58,16 +81,16 @@ void main() {
   });
 
   final games = <String, TableGameRules>{
-    'okey': TableGameRules(gameId: 'okey', rulesFor: (_) => const OkeyRules(), aiScale: 0.25),
-    'okey-esli': TableGameRules(gameId: 'okey-esli', rulesFor: (_) => const OkeyRules(partners: true), aiScale: 0.25),
-    'okey-katlamali': TableGameRules(gameId: 'okey-katlamali', rulesFor: (_) => const OkeyRules(doubling: true), aiScale: 0.25),
-    'okey-iki': TableGameRules(gameId: 'okey-iki', rulesFor: (_) => const OkeyRules(players: 2), aiScale: 0.25),
-    '101': TableGameRules(gameId: '101', rulesFor: (_) => const Okey101Rules(), aiScale: 0.2),
-    'domino': TableGameRules(gameId: 'domino', rulesFor: (d) => DominoRules(d <= 4 ? 2 : 4)),
-    'mahjong': TableGameRules(gameId: 'mahjong', rulesFor: (_) => const MahjongRules(), aiScale: 0.2),
-    'riichi': TableGameRules(gameId: 'riichi', rulesFor: (_) => const MahjongRules(MahjongStyle.riichi), aiScale: 0.2),
-    'hk': TableGameRules(gameId: 'hk', rulesFor: (_) => const MahjongRules(MahjongStyle.hongKong), aiScale: 0.2),
-    'sanma': TableGameRules(gameId: 'sanma', rulesFor: (_) => const MahjongRules(MahjongStyle.sanma), aiScale: 0.2),
+    'okey': TableGameRules(gameId: 'okey', rulesFor: (_) => const OkeyRules(), aiScale: 0.1, quickValidate: true),
+    'okey-esli': TableGameRules(gameId: 'okey-esli', rulesFor: (_) => const OkeyRules(partners: true), aiScale: 0.1, quickValidate: true),
+    'okey-katlamali': TableGameRules(gameId: 'okey-katlamali', rulesFor: (_) => const OkeyRules(doubling: true), aiScale: 0.1, quickValidate: true),
+    'okey-iki': TableGameRules(gameId: 'okey-iki', rulesFor: (_) => const OkeyRules(players: 2), aiScale: 0.1, quickValidate: true),
+    '101': TableGameRules(gameId: '101', rulesFor: (_) => const Okey101Rules(), aiScale: 0.1, quickValidate: true),
+    'domino': TableGameRules(gameId: 'domino', rulesFor: (d) => DominoRules(d <= 4 ? 2 : 4), quickValidate: true),
+    'mahjong': TableGameRules(gameId: 'mahjong', rulesFor: (_) => const MahjongRules(), aiScale: 0.1, quickValidate: true),
+    'riichi': TableGameRules(gameId: 'riichi', rulesFor: (_) => const MahjongRules(MahjongStyle.riichi), aiScale: 0.1, quickValidate: true),
+    'hk': TableGameRules(gameId: 'hk', rulesFor: (_) => const MahjongRules(MahjongStyle.hongKong), aiScale: 0.1, quickValidate: true),
+    'sanma': TableGameRules(gameId: 'sanma', rulesFor: (_) => const MahjongRules(MahjongStyle.sanma), aiScale: 0.1, quickValidate: true),
   };
 
   games.forEach((name, rules) {
@@ -77,7 +100,7 @@ void main() {
         final sw = Stopwatch()..start();
         final gl = rules.build(planner.spec(lv));
         expect(gl.validation.ok, isTrue, reason: '$name $lv');
-        final end = TableGameRules.simulate(gl.puzzle, seat0Samples: 2);
+        final end = TableGameRules.simulate(gl.puzzle, quick: true);
         expect(end.over, isTrue, reason: '$name $lv');
         final back = TableState.fromJson(end.serialize());
         expect(back.serialize(), end.serialize());

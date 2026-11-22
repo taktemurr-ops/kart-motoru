@@ -41,7 +41,12 @@ class TableGameRules extends GameRules<TableLevel> {
   /// Ağır oyunlarda yapay zekâ deneme sayısını küçültmek için çarpan.
   final double aiScale;
 
-  TableGameRules({required this.gameId, required this.rulesFor, TableGoal Function(int)? goalFor, this.levels = 50000, this.aiScale = 1})
+  /// Doğrulamada bütün koltuklar hızlı politikayla oynar (uzun, çok kişilik
+  /// taş oyunlarında bölüm üretimini hızlı tutar).
+  final bool quickValidate;
+
+  TableGameRules(
+      {required this.gameId, required this.rulesFor, TableGoal Function(int)? goalFor, this.levels = 50000, this.aiScale = 1, this.quickValidate = false})
       : goalFor = goalFor ?? ((_) => TableGoal.win);
 
   @override
@@ -73,10 +78,10 @@ class TableGameRules extends GameRules<TableLevel> {
     return TableLevel(rules, rules.deal(deck, r.nextInt(rules.seats)), goalFor(d), spec.seed, d, (samplesFor(d) * aiScale).round());
   }
 
-  static TableState simulate(TableLevel l, {int seat0Samples = 16, int seed = 7}) {
+  static TableState simulate(TableLevel l, {int seat0Samples = 16, int seed = 7, bool quick = false}) {
     final s = l.start.copy();
     final r = SeededRandom(mixSeed([l.seed, seed]));
-    final ais = [for (var p = 0; p < s.seats; p++) TableAI(l.rules, p == 0 ? seat0Samples : l.aiSamples, r)];
+    final ais = [for (var p = 0; p < s.seats; p++) TableAI(l.rules, quick ? 0 : (p == 0 ? seat0Samples : l.aiSamples), r)];
     var guard = 0;
     while (!s.over && guard++ < 1500) {
       l.rules.apply(s, ais[s.turn].choose(s));
@@ -86,7 +91,7 @@ class TableGameRules extends GameRules<TableLevel> {
 
   @override
   Validation validate(TableLevel level, LevelSpec spec) {
-    final end = simulate(level, seat0Samples: (16 * aiScale).round().clamp(4, 16));
+    final end = simulate(level, seat0Samples: (16 * aiScale).round().clamp(4, 16), quick: quickValidate);
     if (!end.over) return const Validation.fail('did not finish');
     if (!level.goal.check(level.rules, end)) return const Validation.fail('goal not reached');
     return Validation.ok(end.captured[0].length);

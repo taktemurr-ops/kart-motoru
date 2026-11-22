@@ -67,6 +67,93 @@ bool _sets(List<int> c, int need, {required bool chows}) {
   return false;
 }
 
+/// Hazıra uzaklık (shanten): -1 tamam, 0 bir taş eksik (tenpai). [needSets]
+/// kapalı elde gereken grup sayısı; [sevenPairs] yedi çifti de hesaba katar.
+int mjShanten(List<int> c, int needSets, {bool sevenPairs = false}) {
+  var best = 2 * needSets;
+  var sets = 0, part = 0, pair = 0;
+  void scan(int k) {
+    while (k < 34 && c[k] == 0) {
+      k++;
+    }
+    if (k >= 34) {
+      final p = part < needSets - sets ? part : needSets - sets;
+      final v = 2 * needSets - 2 * sets - p - pair;
+      if (v < best) best = v;
+      return;
+    }
+    if (c[k] >= 3) {
+      c[k] -= 3;
+      sets++;
+      scan(k);
+      sets--;
+      c[k] += 3;
+    }
+    final suited = k < 27;
+    if (suited && k % 9 <= 6 && c[k + 1] > 0 && c[k + 2] > 0) {
+      c[k]--;
+      c[k + 1]--;
+      c[k + 2]--;
+      sets++;
+      scan(k);
+      sets--;
+      c[k]++;
+      c[k + 1]++;
+      c[k + 2]++;
+    }
+    if (pair == 0 && c[k] >= 2) {
+      c[k] -= 2;
+      pair = 1;
+      scan(k);
+      pair = 0;
+      c[k] += 2;
+    }
+    if (sets + part < needSets) {
+      if (c[k] >= 2) {
+        c[k] -= 2;
+        part++;
+        scan(k);
+        part--;
+        c[k] += 2;
+      }
+      if (suited && k % 9 <= 7 && c[k + 1] > 0) {
+        c[k]--;
+        c[k + 1]--;
+        part++;
+        scan(k);
+        part--;
+        c[k]++;
+        c[k + 1]++;
+      }
+      if (suited && k % 9 <= 6 && c[k + 2] > 0) {
+        c[k]--;
+        c[k + 2]--;
+        part++;
+        scan(k);
+        part--;
+        c[k]++;
+        c[k + 2]++;
+      }
+    }
+    c[k]--;
+    scan(k);
+    c[k]++;
+  }
+
+  scan(0);
+  var v = best;
+  if (sevenPairs) {
+    var pairs = 0, kinds = 0;
+    for (final x in c) {
+      if (x >= 2) pairs++;
+      if (x >= 1) kinds++;
+    }
+    final sp = 6 - pairs + (kinds < 7 ? 7 - kinds : 0);
+    if (sp < v) v = sp;
+  }
+  return v;
+}
+
 bool mjSevenPairs(List<int> counts) {
   var pairs = 0;
   for (final v in counts) {
@@ -483,39 +570,74 @@ class MahjongRules extends TableRules {
     return v;
   }
 
-  @override
-  TAction quick(TableState s, SeededRandom r) {
-    final l = legalActions(s);
-    if (l.length == 1) return l.first;
-    final win = l.where((a) => a.kind == 9);
-    if (win.isNotEmpty) return win.first;
-    final p = s.turn;
-    switch (s.vars[0]) {
-      case 3:
-        final k = mjKind(s.piles[1].last);
-        final take = l.where((a) => a.kind == 4 || a.kind == 3).toList();
-        if (take.isNotEmpty && (k >= 31 || k == 27 + seatWind(s, p) || r.chance(0.35))) return take.last;
-        return const TAction(2);
-      case 4:
-        if (r.chance(0.3)) return l[1 + r.nextInt(l.length - 1)];
-        return const TAction(2);
-    }
-    final kong = l.where((a) => a.kind == 7 || a.kind == 8);
-    if (kong.isNotEmpty) return kong.first;
-    final riichi = l.where((a) => a.kind == 6).toList();
-    if (riichi.isNotEmpty && r.chance(0.7)) return riichi.first;
-    final c = counts(s.hands[p]);
-    TAction? best;
-    var bv = 1 << 20;
-    for (final a in l) {
-      if (a.kind != 0) continue;
-      final v = _useful(c, mjKind(a.cards.first)) * 3 + r.nextInt(3);
+  int _shanten(TableState s, int p, List<KCard> tiles) =>
+      mjShanten(counts(tiles), 4 - openSets(s, p), sevenPairs: openSets(s, p) == 0);
+
+  /// Taş atıldıktan sonra en iyi shanten ve o taş.
+  (int, KCard) _bestDiscard(TableState s, int p, List<KCard> hand, SeededRandom r, {KCard? only}) {
+    final c = counts(hand);
+    final need = 4 - openSets(s, p);
+    final closed = openSets(s, p) == 0;
+    var bv = 1 << 20, bt = hand.first, bs = 99;
+    final seen = <int>{};
+    for (final t in hand) {
+      if (only != null && t != only) continue;
+      final k = mjKind(t);
+      if (!seen.add(k)) continue;
+      c[k]--;
+      final sh = mjShanten(c, need, sevenPairs: closed);
+      c[k]++;
+      final v = sh * 1000 - _useful(c, k) * 3 + r.nextInt(3);
       if (v < bv) {
         bv = v;
-        best = a;
+        bt = t;
+        bs = sh;
       }
     }
-    return best ?? l.last;
+    return (bs, bt);
+  }
+
+  @override
+  TAction quick(TableState s, SeededRandom r) {
+    final p = s.turn;
+    final h = s.hands[p];
+    switch (s.vars[0]) {
+      case 0:
+        return const TAction(1);
+      case 2:
+        return const TAction(9);
+      case 1:
+        if (winValue(s, p, null, selfDraw: true) > 0) return const TAction(9);
+        final last = s.vars[6] - 1;
+        final locked = inRiichi(s, p) && h.contains(last);
+        final (sh, tile) = _bestDiscard(s, p, h, r, only: locked ? last : null);
+        if (sh == 0 && riichiLike && !inRiichi(s, p) && concealed(s, p) && s.piles[0].length > 18) return TAction(6, [tile]);
+        return TAction(0, [tile]);
+    }
+    final l = legalActions(s);
+    if (l.length == 1) return l.first;
+    // Alırsam ve en iyi taşı atarsam hazıra yaklaşıyor muyum?
+    final now = _shanten(s, p, h);
+    final t = s.piles[1].last;
+    for (final a in l.reversed) {
+      if (a.kind == 2) continue;
+      final rest = [...h]..removeWhere(a.cards.contains);
+      final need = 4 - openSets(s, p) - 1;
+      final c = counts(rest);
+      var after = 1 << 20;
+      final seen = <int>{};
+      for (final x in rest) {
+        final k = mjKind(x);
+        if (!seen.add(k)) continue;
+        c[k]--;
+        final v = mjShanten(c, need);
+        c[k]++;
+        if (v < after) after = v;
+      }
+      final honorPung = a.kind != 5 && (mjKind(t) >= 31 || mjKind(t) == 27 + seatWind(s, p));
+      if (after < now || (honorPung && after <= now)) return a;
+    }
+    return const TAction(2);
   }
 
   static const _windGlyph = ['東', '南', '西', '北'];
