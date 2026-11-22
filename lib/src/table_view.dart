@@ -39,6 +39,48 @@ class _TableViewState extends State<TableView> {
   PlayContext get ctx => widget.ctx;
   TableRules get rules => level.rules;
 
+  // ---- Koltuklar ---------------------------------------------------------------
+  StreamSubscription<(int, String)>? _sub;
+  final List<(int, String)> _inbox = [];
+  Completer<void>? _wake;
+
+  /// Sırayla oynamada el, telefon elden ele geçene kadar kapalı tutulur.
+  bool _cover = false;
+  int _shown = 0;
+
+  bool get _multi => ctx.seats.isNotEmpty;
+  MatchLink? get _match => ctx.match;
+  bool _isLocal(int seat) => _multi ? ctx.role(seat) == SeatRole.local : seat == 0;
+  bool _isAi(int seat) => _multi ? (ctx.role(seat) == SeatRole.ai || (_match?.dropped.contains(seat) ?? false)) : seat != 0;
+
+  /// Eli ekranda gösterilen koltuk.
+  int get me {
+    final m = _match;
+    if (m != null) return m.mySeat;
+    if (ctx.passAndPlay) return _shown;
+    return 0;
+  }
+
+  Future<int?> _remote(int seat) async {
+    while (mounted && !_ended) {
+      final i = _inbox.indexWhere((e) => e.$1 == seat);
+      if (i >= 0) return int.tryParse(_inbox.removeAt(i).$2);
+      if (_isAi(seat)) return null;
+      _wake = Completer<void>();
+      await Future.any([_wake!.future, Future<void>.delayed(const Duration(seconds: 2))]);
+    }
+    return null;
+  }
+
+  /// Sıra başka bir yerel oyuncuya geçtiyse eli kapat.
+  void _maybeCover() {
+    if (!ctx.passAndPlay || s.over) return;
+    if (_isLocal(s.turn) && s.turn != _shown) {
+      _shown = s.turn;
+      _cover = true;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -52,12 +94,26 @@ class _TableViewState extends State<TableView> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!_ended && mounted) setState(() => _seconds++);
     });
+    final m = _match;
+    if (m != null) {
+      _sub = m.moves.listen((e) {
+        _inbox.add(e);
+        final w = _wake;
+        _wake = null;
+        w?.complete();
+      });
+    }
+    if (ctx.passAndPlay) {
+      _shown = _isLocal(s.turn) ? s.turn : 0;
+      _cover = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _advance());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
 
@@ -68,33 +124,54 @@ class _TableViewState extends State<TableView> {
   Future<void> _advance() async {
     if (_busy) return;
     _busy = true;
-    while (mounted && !_ended && !s.over && s.turn != 0) {
-      await Future<void>.delayed(_pace);
-      if (!mounted) return;
+    while (mounted && !_ended && !s.over && !_isLocal(s.turn)) {
+      final seat = s.turn;
+      final mt = _match;
+      TAction act;
+      if (mt != null && (!_isAi(seat) || !mt.isHost)) {
+        final i = await _remote(seat);
+        if (!mounted || _ended) return;
+        final legal = rules.legalActions(s);
+        if (i == null || i < 0 || i >= legal.length) continue;
+        act = legal[i];
+      } else {
+        await Future<void>.delayed(_pace);
+        if (!mounted) return;
+        act = ais[seat].choose(s);
+        if (mt != null) unawaited(mt.send('${rules.legalActions(s).indexOf(act)}', asSeat: seat));
+      }
       final before = s.captured.fold<int>(0, (a, c) => a + c.length);
-      rules.apply(s, ais[s.turn].choose(s));
+      rules.apply(s, act);
       final after = s.captured.fold<int>(0, (a, c) => a + c.length);
       ctx.sfx(after > before ? Sfx.coin : Sfx.place);
       setState(() {});
     }
     _busy = false;
     _persist();
-    if (s.over) _end();
+    if (s.over) {
+      _end();
+    } else {
+      setState(_maybeCover);
+    }
   }
 
   void _human(TAction a) {
-    if (_ended || _busy || s.turn != 0 || s.over) return;
-    if (!rules.legalActions(s).contains(a)) {
+    if (_ended || _busy || !_isLocal(s.turn) || s.over || _cover) return;
+    final legal = rules.legalActions(s);
+    if (!legal.contains(a)) {
       ctx.sfx(Sfx.error);
       return;
     }
+    unawaited(_match?.send('${legal.indexOf(a)}'));
     _undo.add(s.serialize());
-    final before = s.captured[0].length;
+    final who = s.turn;
+    final before = s.captured[who].length;
     rules.apply(s, a);
-    ctx.sfx(s.captured[0].length > before ? Sfx.coin : Sfx.place);
+    ctx.sfx(s.captured[who].length > before ? Sfx.coin : Sfx.place);
     setState(() {
       _hint = null;
       _selected.clear();
+      _maybeCover();
     });
     _persist();
     if (s.over) {
@@ -105,7 +182,7 @@ class _TableViewState extends State<TableView> {
   }
 
   void _tapCard(KCard c) {
-    if (_ended || _busy || s.turn != 0) return;
+    if (_ended || _busy || !_isLocal(s.turn) || _cover) return;
     final legal = rules.legalActions(s);
     final plays = legal.where((a) => a.cards.length == 1 && a.cards.first == c).toList();
     final multi = legal.any((a) => a.cards.length > 1 && a.cards.contains(c));
@@ -117,7 +194,7 @@ class _TableViewState extends State<TableView> {
   }
 
   void _doUndo() {
-    if (_undo.isEmpty || _busy || _ended) return;
+    if (_undo.isEmpty || _busy || _ended || _match != null || ctx.passAndPlay) return;
     setState(() {
       s = TableState.fromJson(_undo.removeLast());
       _undos++;
@@ -128,7 +205,7 @@ class _TableViewState extends State<TableView> {
   }
 
   Future<void> _useHint() async {
-    if (_ended || _busy || s.turn != 0 || !await ctx.requestHint()) return;
+    if (_ended || _busy || !_isLocal(s.turn) || _cover || !await ctx.requestHint()) return;
     _hints++;
     final adv = TableAI(rules, 20, SeededRandom(mixSeed([level.seed, _seconds, 5])));
     setState(() => _hint = adv.choose(s));
@@ -139,6 +216,26 @@ class _TableViewState extends State<TableView> {
     if (_ended) return;
     _ended = true;
     _timer?.cancel();
+    if (_multi) {
+      final sc = rules.finalScores(s);
+      var w = 0;
+      for (var i = 1; i < sc.length; i++) {
+        if (sc[i] > sc[w]) w = i;
+      }
+      final tie = [for (var i = 0; i < sc.length; i++) if (sc[i] == sc[w]) i].length > 1;
+      final team = rules.partnerships ? {w, (w + 2) % s.seats} : {w};
+      final iWon = !tie && (_match != null ? team.contains(_match!.mySeat) : true);
+      ctx.sfx(iWon ? Sfx.win : Sfx.lose);
+      unawaited(_match?.finish(tie ? -1 : w));
+      ctx.finish(RoundResult(
+        won: iWon,
+        score: iWon ? 300 : 30,
+        seconds: _seconds,
+        headline: tie ? ctx.t('draw_title') : (_match != null ? null : ctx.t('player_wins', {'n': w + 1})),
+        gameStats: {'games_won': iWon ? 1 : 0},
+      ));
+      return;
+    }
     final won = level.goal.check(rules, s);
     ctx.sfx(won ? Sfx.win : Sfx.lose);
     ctx.finish(RoundResult(
@@ -166,6 +263,10 @@ class _TableViewState extends State<TableView> {
       );
 
   String _seatName(int seat) {
+    if (_multi && (ctx.passAndPlay || ctx.role(seat) != SeatRole.ai)) {
+      return seat == me && _match != null ? Strings.tx(ctx.lang, 'Sen', 'You') : ctx.seatName(seat);
+    }
+    seat = (seat - me + s.seats) % s.seats;
     if (seat == 0) return Strings.tx(ctx.lang, 'Sen', 'You');
     if (s.seats == 2) return Strings.tx(ctx.lang, 'Karşı', 'Across');
     if (rules.partnerships && seat == 2) return Strings.tx(ctx.lang, 'Eşin', 'Partner');
@@ -186,7 +287,7 @@ class _TableViewState extends State<TableView> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(_seatName(seat), style: const TextStyle(fontWeight: FontWeight.w700)),
         Text(
-            '${seat != 0 ? '🂠${s.hands[seat].length}  ' : ''}'
+            '${seat != me ? '🂠${s.hands[seat].length}  ' : ''}'
             '${Strings.tx(ctx.lang, 'Puan', 'Points')}: ${rules.finalScores(s)[seat]}',
             style: const TextStyle(fontSize: 12)),
       ]),
@@ -225,7 +326,7 @@ class _TableViewState extends State<TableView> {
 
   @override
   Widget build(BuildContext context) {
-    final legal = s.turn == 0 && !s.over && !_busy ? rules.legalActions(s) : const <TAction>[];
+    final legal = _isLocal(s.turn) && s.turn == me && !s.over && !_busy && !_cover ? rules.legalActions(s) : const <TAction>[];
     final playable = {for (final a in legal) if (a.cards.length == 1) a.cards.first};
     final buttons = legal
         .where((a) => !rules.isCardPlay(a) || (_selected.length == 1 && a.cards.length == 1 && _selected.contains(a.cards.first)))
@@ -234,7 +335,7 @@ class _TableViewState extends State<TableView> {
     final status = rules.status(s, ctx.lang);
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth, h = cons.maxHeight;
-      final n = math.max(1, s.hands[0].length);
+      final n = math.max(1, s.hands[me].length);
       final cw = math.min(72.0, math.min(w / (n * 0.62 + 0.6), h * 0.15));
       final pw = math.min(64.0, w * 0.14);
       return Column(children: [
@@ -252,7 +353,7 @@ class _TableViewState extends State<TableView> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Wrap(spacing: 8, runSpacing: 6, alignment: WrapAlignment.center, children: [
-            for (var p = 1; p < s.seats; p++) _badge(p),
+            for (var k = 1; k < s.seats; k++) _badge((me + k) % s.seats),
           ]),
         ),
         Expanded(
@@ -279,12 +380,20 @@ class _TableViewState extends State<TableView> {
                 ),
             ]),
           ),
-        _badge(0),
+        _badge(me),
         const SizedBox(height: 4),
+        if (_cover)
+          _CoverCard(
+            text: ctx.t('pass_device', {'p': ctx.seatName(_shown)}),
+            sub: ctx.t('tap_when_ready'),
+            height: cw * rules.tileAspect + 18,
+            onTap: () => setState(() => _cover = false),
+          )
+        else
         SizedBox(
           height: cw * rules.tileAspect + 18,
           child: LayoutBuilder(builder: (context, c2) {
-            final cards = s.hands[0];
+            final cards = s.hands[me];
             final k = cards.length;
             final step = k <= 1 ? 0.0 : math.min(cw * 0.95, (c2.maxWidth - cw - 8) / (k - 1));
             final left0 = (c2.maxWidth - (cw + step * math.max(0, k - 1))) / 2;
@@ -302,7 +411,7 @@ class _TableViewState extends State<TableView> {
                     top: sel ? 0 : (ok ? 6 : 16),
                     child: GestureDetector(
                       onTap: () => _tapCard(c),
-                      child: _card(c, cw, dim: s.turn == 0 && legal.isNotEmpty && !ok, hl: hl || sel),
+                      child: _card(c, cw, dim: s.turn == me && legal.isNotEmpty && !ok, hl: hl || sel),
                     ),
                   );
                 }(),
@@ -313,7 +422,7 @@ class _TableViewState extends State<TableView> {
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
             IconButton.filledTonal(
-                onPressed: _ended || _busy || s.turn != 0 ? null : _useHint,
+                onPressed: _ended || _busy || !_isLocal(s.turn) || _cover ? null : _useHint,
                 icon: const Icon(Icons.lightbulb),
                 tooltip: ctx.t('hint')),
             IconButton.filledTonal(
@@ -324,6 +433,33 @@ class _TableViewState extends State<TableView> {
         ),
       ]);
     });
+  }
+}
+
+/// Sırayla oynamada eli kapatan kart: "Telefonu Oyuncu 2'ye ver".
+class _CoverCard extends StatelessWidget {
+  final String text, sub;
+  final double height;
+  final VoidCallback onTap;
+  const _CoverCard({required this.text, required this.sub, required this.height, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: height,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(16)),
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.swap_horiz, color: cs.onPrimaryContainer),
+          Text(text, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, color: cs.onPrimaryContainer)),
+          Text(sub, style: TextStyle(color: cs.onPrimaryContainer)),
+        ]),
+      ),
+    );
   }
 }
 

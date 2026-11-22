@@ -41,6 +41,46 @@ class _TrickViewState extends State<TrickView> {
   PlayContext get ctx => widget.ctx;
   TrickRules get rules => level.rules;
 
+  // ---- Koltuklar ---------------------------------------------------------------
+  StreamSubscription<(int, String)>? _sub;
+  final List<(int, String)> _inbox = [];
+  Completer<void>? _wake;
+  bool _cover = false;
+  int _shown = 0;
+
+  bool get _multi => ctx.seats.isNotEmpty;
+  MatchLink? get _match => ctx.match;
+  bool _isLocal(int seat) => _multi ? ctx.role(seat) == SeatRole.local : seat == 0;
+  bool _isAi(int seat) => _multi ? (ctx.role(seat) == SeatRole.ai || (_match?.dropped.contains(seat) ?? false)) : seat != 0;
+
+  int get me {
+    final m = _match;
+    if (m != null) return m.mySeat;
+    if (ctx.passAndPlay) return _shown;
+    return 0;
+  }
+
+  bool get _myTurn => _isLocal(s.turn) && s.turn == me && !_cover;
+
+  Future<String?> _remote(int seat) async {
+    while (mounted && !_ended) {
+      final i = _inbox.indexWhere((e) => e.$1 == seat);
+      if (i >= 0) return _inbox.removeAt(i).$2;
+      if (_isAi(seat)) return null;
+      _wake = Completer<void>();
+      await Future.any([_wake!.future, Future<void>.delayed(const Duration(seconds: 2))]);
+    }
+    return null;
+  }
+
+  void _maybeCover() {
+    if (!ctx.passAndPlay || s.phase == TrickPhase.over) return;
+    if (_isLocal(s.turn) && s.turn != _shown) {
+      _shown = s.turn;
+      _cover = true;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +97,19 @@ class _TrickViewState extends State<TrickView> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!_ended && mounted) setState(() => _seconds++);
     });
+    final m = _match;
+    if (m != null) {
+      _sub = m.moves.listen((e) {
+        _inbox.add(e);
+        final w = _wake;
+        _wake = null;
+        w?.complete();
+      });
+    }
+    if (ctx.passAndPlay) {
+      _shown = _isLocal(s.turn) ? s.turn : 0;
+      _cover = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _advance());
   }
 
@@ -65,6 +118,7 @@ class _TrickViewState extends State<TrickView> {
   @override
   void dispose() {
     _timer?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
 
@@ -76,21 +130,57 @@ class _TrickViewState extends State<TrickView> {
   Future<void> _advance() async {
     if (_busy) return;
     _busy = true;
-    while (mounted && !_ended && s.phase != TrickPhase.over && s.turn != 0) {
+    while (mounted && !_ended && s.phase != TrickPhase.over && !_isLocal(s.turn)) {
+      final seat = s.turn;
+      final mt = _match;
+      if (mt != null && (!_isAi(seat) || !mt.isHost)) {
+        final mv = await _remote(seat);
+        if (!mounted || _ended) return;
+        if (mv == null) continue;
+        if (!await _applyRemote(seat, mv)) continue;
+        continue;
+      }
       await Future<void>.delayed(_pace);
       if (!mounted) return;
-      final seat = s.turn;
       if (s.phase == TrickPhase.bidding) {
-        rules.applyBid(s, seat, ais[seat].bid(s, seat));
+        final b = ais[seat].bid(s, seat);
+        if (mt != null) unawaited(mt.send('b:$b', asSeat: seat));
+        rules.applyBid(s, seat, b);
         if (rules.biddingOver(s)) rules.finishBidding(s);
         setState(() {});
       } else {
-        await _playCard(seat, ais[seat].play(s, seat));
+        final c = ais[seat].play(s, seat);
+        if (mt != null) unawaited(mt.send('c:${rules.legalPlays(s, seat).indexOf(c)}', asSeat: seat));
+        await _playCard(seat, c);
       }
     }
     _busy = false;
     _persist();
-    if (s.phase == TrickPhase.over) _end();
+    if (s.phase == TrickPhase.over) {
+      _end();
+    } else {
+      setState(_maybeCover);
+    }
+  }
+
+  /// Ağdan gelen hamle: "b:<ihale>" ya da "c:<geçerli kart sırası>".
+  Future<bool> _applyRemote(int seat, String mv) async {
+    final v = int.tryParse(mv.substring(2));
+    if (v == null) return false;
+    if (mv.startsWith('b:') && s.phase == TrickPhase.bidding) {
+      if (!rules.legalBids(s, seat).contains(v)) return false;
+      rules.applyBid(s, seat, v);
+      if (rules.biddingOver(s)) rules.finishBidding(s);
+      setState(() {});
+      return true;
+    }
+    if (mv.startsWith('c:') && s.phase == TrickPhase.play) {
+      final legal = rules.legalPlays(s, seat);
+      if (v < 0 || v >= legal.length) return false;
+      await _playCard(seat, legal[v]);
+      return true;
+    }
+    return false;
   }
 
   Future<void> _playCard(int seat, KCard c) async {
@@ -107,7 +197,7 @@ class _TrickViewState extends State<TrickView> {
       });
       await Future<void>.delayed(_pace * 1.6);
       if (!mounted) return;
-      ctx.sfx(s.lastWinner == 0 || (rules.partnerships && s.lastWinner == 2) ? Sfx.coin : Sfx.tap);
+      ctx.sfx(s.lastWinner == me || (rules.partnerships && s.lastWinner == (me + 2) % s.seats) ? Sfx.coin : Sfx.tap);
       setState(() => _shownTrick = const []);
     } else {
       setState(() {});
@@ -115,32 +205,41 @@ class _TrickViewState extends State<TrickView> {
   }
 
   Future<void> _humanPlay(KCard c) async {
-    if (_ended || _busy || s.turn != 0 || s.phase != TrickPhase.play) return;
-    if (!rules.legalPlays(s, 0).contains(c)) {
+    if (_ended || _busy || !_myTurn || s.phase != TrickPhase.play) return;
+    final seat = s.turn;
+    final legal = rules.legalPlays(s, seat);
+    if (!legal.contains(c)) {
       ctx.sfx(Sfx.error);
       return;
     }
+    unawaited(_match?.send('c:${legal.indexOf(c)}'));
     _undo.add(s.serialize());
     _hintCard = null;
     _busy = true;
-    await _playCard(0, c);
+    await _playCard(seat, c);
     _busy = false;
     _persist();
+    setState(_maybeCover);
     _advance();
   }
 
   void _humanBid(int bid) {
-    if (_ended || _busy || s.turn != 0 || s.phase != TrickPhase.bidding) return;
+    if (_ended || _busy || !_myTurn || s.phase != TrickPhase.bidding) return;
+    final seat = s.turn;
+    unawaited(_match?.send('b:$bid'));
     _undo.add(s.serialize());
-    rules.applyBid(s, 0, bid);
+    rules.applyBid(s, seat, bid);
     if (rules.biddingOver(s)) rules.finishBidding(s);
-    setState(() => _hintBid = null);
+    setState(() {
+      _hintBid = null;
+      _maybeCover();
+    });
     _persist();
     _advance();
   }
 
   void _doUndo() {
-    if (_undo.isEmpty || _busy || _ended) return;
+    if (_undo.isEmpty || _busy || _ended || _match != null || ctx.passAndPlay) return;
     setState(() {
       s = TrickState.fromJson(_decode(_undo.removeLast()));
       _undos++;
@@ -151,14 +250,14 @@ class _TrickViewState extends State<TrickView> {
   }
 
   Future<void> _hint() async {
-    if (_ended || _busy || s.turn != 0 || !await ctx.requestHint()) return;
+    if (_ended || _busy || !_myTurn || !await ctx.requestHint()) return;
     _hints++;
     final adv = TrickAI(rules, 30, SeededRandom(mixSeed([level.seed, _seconds, 3])));
     setState(() {
       if (s.phase == TrickPhase.bidding) {
-        _hintBid = adv.bid(s, 0);
+        _hintBid = adv.bid(s, s.turn);
       } else {
-        _hintCard = adv.play(s, 0);
+        _hintCard = adv.play(s, s.turn);
       }
     });
     _persist();
@@ -168,6 +267,26 @@ class _TrickViewState extends State<TrickView> {
     if (_ended) return;
     _ended = true;
     _timer?.cancel();
+    if (_multi) {
+      final u = [for (var i = 0; i < s.seats; i++) rules.utility(s, i)];
+      var w = 0;
+      for (var i = 1; i < u.length; i++) {
+        if (u[i] > u[w]) w = i;
+      }
+      final team = rules.partnerships ? {w, (w + 2) % s.seats} : {w};
+      final tie = [for (var i = 0; i < u.length; i++) if (u[i] == u[w] && !team.contains(i)) i].isNotEmpty;
+      final iWon = !tie && (_match != null ? team.contains(_match!.mySeat) : true);
+      ctx.sfx(iWon ? Sfx.win : Sfx.lose);
+      unawaited(_match?.finish(tie ? -1 : w));
+      ctx.finish(RoundResult(
+        won: iWon,
+        score: iWon ? 300 : 30,
+        seconds: _seconds,
+        headline: tie ? ctx.t('draw_title') : (_match != null ? null : ctx.t('player_wins', {'n': w + 1})),
+        gameStats: {'hands_won': iWon ? 1 : 0},
+      ));
+      return;
+    }
     final won = level.goal.check(rules, s);
     ctx.sfx(won ? Sfx.win : Sfx.lose);
     final mine = s.tricks[0] + (rules.partnerships ? s.tricks[2] : 0);
@@ -194,14 +313,18 @@ class _TrickViewState extends State<TrickView> {
   /// Koltuğun ekrandaki yeri: 0 alt, sonra saat yönünde.
   Alignment _seatAlign(int seat) {
     final n = s.seats;
+    seat = (seat - me + n) % n;
     if (n == 2) return seat == 0 ? Alignment.bottomCenter : Alignment.topCenter;
     if (n == 3) return const [Alignment.bottomCenter, Alignment.centerLeft, Alignment.centerRight][seat];
     return const [Alignment.bottomCenter, Alignment.centerLeft, Alignment.topCenter, Alignment.centerRight][seat % 4];
   }
 
   String _seatName(int seat) {
-    if (seat == 0) return Strings.tx(ctx.lang, 'Sen', 'You');
-    if (rules.partnerships && seat == 2) return Strings.tx(ctx.lang, 'Eşin', 'Partner');
+    if (_multi && (ctx.passAndPlay || ctx.role(seat) != SeatRole.ai)) {
+      return seat == me && _match != null ? Strings.tx(ctx.lang, 'Sen', 'You') : ctx.seatName(seat);
+    }
+    if (seat == me) return Strings.tx(ctx.lang, 'Sen', 'You');
+    if (rules.partnerships && seat == (me + 2) % s.seats) return Strings.tx(ctx.lang, 'Eşin', 'Partner');
     final a = _seatAlign(seat);
     if (a == Alignment.centerLeft) return Strings.tx(ctx.lang, 'Sol', 'Left');
     if (a == Alignment.centerRight) return Strings.tx(ctx.lang, 'Sağ', 'Right');
@@ -224,7 +347,7 @@ class _TrickViewState extends State<TrickView> {
         Text(_seatName(seat), style: const TextStyle(fontWeight: FontWeight.w700)),
         Text('${Strings.tx(ctx.lang, 'El', 'Tricks')}: ${s.tricks[seat]}'
             '${bid != null ? '  ·  ${rules.bidLabel(bid, ctx.lang)}' : ''}'
-            '${seat != 0 ? '  ·  🂠${s.hands[seat].length}' : ''}',
+            '${seat != me ? '  ·  🂠${s.hands[seat].length}' : ''}',
             style: const TextStyle(fontSize: 12)),
       ]),
     );
@@ -242,10 +365,10 @@ class _TrickViewState extends State<TrickView> {
     final status = rules.status(s, ctx.lang);
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth, h = cons.maxHeight;
-      final handLen = math.max(1, s.hands[0].length);
+      final handLen = math.max(1, s.hands[me].length);
       final cw = math.min(76.0, math.min(w / (handLen * 0.62 + 0.6), h * 0.16));
       final tw = math.min(70.0, w * 0.15);
-      final legal = s.turn == 0 && s.phase == TrickPhase.play ? rules.legalPlays(s, 0).toSet() : <KCard>{};
+      final legal = _myTurn && s.phase == TrickPhase.play ? rules.legalPlays(s, s.turn).toSet() : <KCard>{};
       final trickCards = _shownTrick.isNotEmpty ? _shownTrick : s.trick;
       final trickLeader = _shownTrick.isNotEmpty ? _shownLeader : s.leader;
       return Column(children: [
@@ -276,8 +399,8 @@ class _TrickViewState extends State<TrickView> {
           ),
         Expanded(
           child: Stack(children: [
-            for (var p = 1; p < s.seats; p++)
-              Align(alignment: _seatAlign(p), child: Padding(padding: const EdgeInsets.all(6), child: _seatBadge(p))),
+            for (var k = 1; k < s.seats; k++)
+              Align(alignment: _seatAlign((me + k) % s.seats), child: Padding(padding: const EdgeInsets.all(6), child: _seatBadge((me + k) % s.seats))),
             // Ortadaki el
             Center(
               child: SizedBox(
@@ -300,7 +423,7 @@ class _TrickViewState extends State<TrickView> {
                 ]),
               ),
             ),
-            if (s.phase == TrickPhase.bidding && s.turn == 0 && !_busy)
+            if (s.phase == TrickPhase.bidding && _myTurn && !_busy)
               Align(
                 alignment: const Alignment(0, 0.55),
                 child: Card(
@@ -310,7 +433,7 @@ class _TrickViewState extends State<TrickView> {
                       Text(Strings.tx(ctx.lang, 'İhalen?', 'Your bid?'), style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
                       Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
-                        for (final b in rules.legalBids(s, 0))
+                        for (final b in rules.legalBids(s, s.turn))
                           FilledButton.tonal(
                             style: _hintBid == b
                                 ? FilledButton.styleFrom(backgroundColor: const Color(0xFFFFC53D))
@@ -325,20 +448,37 @@ class _TrickViewState extends State<TrickView> {
               ),
           ]),
         ),
-        _seatBadge(0),
+        _seatBadge(me),
         const SizedBox(height: 4),
         // Oyuncunun eli
+        if (_cover)
+          GestureDetector(
+            onTap: () => setState(() => _cover = false),
+            child: Container(
+              height: cw * 1.4 + 18,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, borderRadius: BorderRadius.circular(16)),
+              alignment: Alignment.center,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.swap_horiz),
+                Text(ctx.t('pass_device', {'p': ctx.seatName(_shown)}),
+                    textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(ctx.t('tap_when_ready')),
+              ]),
+            ),
+          )
+        else
         SizedBox(
           height: cw * 1.4 + 18,
           child: LayoutBuilder(builder: (context, c2) {
-            final n = s.hands[0].length;
+            final n = s.hands[me].length;
             final step = n <= 1 ? 0.0 : math.min(cw * 0.95, (c2.maxWidth - cw - 8) / (n - 1));
             final total = cw + step * math.max(0, n - 1);
             final left0 = (c2.maxWidth - total) / 2;
             return Stack(children: [
               for (var i = 0; i < n; i++)
                 () {
-                  final c = s.hands[0][i];
+                  final c = s.hands[me][i];
                   final ok = legal.contains(c);
                   return AnimatedPositioned(
                     key: ValueKey(c),
@@ -347,7 +487,7 @@ class _TrickViewState extends State<TrickView> {
                     top: ok ? 0 : 14,
                     child: GestureDetector(
                       onTap: () => _humanPlay(c),
-                      child: _card(c, cw, dim: s.phase == TrickPhase.play && s.turn == 0 && !ok, hl: _hintCard == c),
+                      child: _card(c, cw, dim: s.phase == TrickPhase.play && _myTurn && !ok, hl: _hintCard == c),
                     ),
                   );
                 }(),
@@ -358,7 +498,7 @@ class _TrickViewState extends State<TrickView> {
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
             IconButton.filledTonal(
-                onPressed: _ended || _busy || s.turn != 0 ? null : _hint,
+                onPressed: _ended || _busy || !_myTurn ? null : _hint,
                 icon: const Icon(Icons.lightbulb),
                 tooltip: ctx.t('hint')),
             IconButton.filledTonal(

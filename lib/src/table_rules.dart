@@ -51,6 +51,12 @@ class TableGameRules extends GameRules<TableLevel> {
 
   @override
   int get levelCount => levels;
+
+  /// Aynı cihazda oynanabilecek en çok kişi (masanın koltuk sayısı).
+  @override
+  int get localPlayers => rulesFor(1).seats;
+
+  static bool versus(LevelSpec spec) => spec.mode == GameModeId.versus || spec.mode == GameModeId.online;
   @override
   List<String> get optionalMechanics => const [];
   @override
@@ -91,6 +97,7 @@ class TableGameRules extends GameRules<TableLevel> {
 
   @override
   Validation validate(TableLevel level, LevelSpec spec) {
+    if (versus(spec)) return const Validation.ok(0);
     final end = simulate(level, seat0Samples: (16 * aiScale).round().clamp(4, 16), quick: quickValidate);
     if (!end.over) return const Validation.fail('did not finish');
     if (!level.goal.check(level.rules, end)) return const Validation.fail('goal not reached');

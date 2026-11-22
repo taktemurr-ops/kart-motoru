@@ -50,6 +50,10 @@ class TrickGameRules extends GameRules<TrickLevel> {
   @override
   int get levelCount => levels;
 
+  /// Aynı cihazda oynanabilecek en çok kişi (masanın koltuk sayısı).
+  @override
+  int get localPlayers => rulesFor(1).seats;
+
   @override
   List<String> get optionalMechanics => const [];
 
@@ -104,6 +108,7 @@ class TrickGameRules extends GameRules<TrickLevel> {
 
   @override
   Validation validate(TrickLevel level, LevelSpec spec) {
+    if (spec.mode == GameModeId.versus || spec.mode == GameModeId.online) return const Validation.ok(0);
     final end = simulate(level);
     if (end.phase != TrickPhase.over) return const Validation.fail('did not finish');
     if (!level.goal.check(level.rules, end)) return const Validation.fail('goal not reached');
