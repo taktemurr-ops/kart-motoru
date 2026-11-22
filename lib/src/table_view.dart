@@ -332,7 +332,9 @@ class _TableViewState extends State<TableView> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FeltTable(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final legal = _isLocal(s.turn) && s.turn == me && !s.over && !_busy && !_cover ? rules.legalActions(s) : const <TAction>[];
     final playable = {for (final a in legal) if (a.cards.length == 1) a.cards.first};
     final buttons = legal

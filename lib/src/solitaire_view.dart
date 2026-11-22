@@ -294,7 +294,9 @@ class _SolitaireViewState extends State<SolitaireView> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FeltTable(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final style = _style;
     return Column(children: [
       Padding(

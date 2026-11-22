@@ -159,7 +159,9 @@ class _SquareViewState extends State<SquareView> {
       SizedBox(width: w, height: w * 1.4, child: CustomPaint(painter: _CardP(c, _style, hl, dim)));
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FeltTable(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final n = level.n;
     final lines = game.lines;
     final goal = Strings.pick(_tGoal, ctx.lang).replaceAll('{t}', '${level.target}');

@@ -114,7 +114,9 @@ class _TrailViewState extends State<TrailView> {
   Rect _rect(int i) => Rect.fromLTWH(_ox + (i % level.cols) * (_cw + _gap), (i ~/ level.cols) * (_ch + _gap), _cw, _ch);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FeltTable(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final info = game.path.isEmpty
         ? Strings.pick(_tStart, ctx.lang)
         : (game.stuck ? Strings.pick(_tStuck, ctx.lang) : '${game.path.length} / ${level.size}');

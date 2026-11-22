@@ -230,11 +230,40 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
             ..close(),
           Paint()..color = col.withValues(alpha: 0.7));
     }
-  } else {
+  } else if (rank == 1 || w < 46) {
     final g = math.min(body.width, body.height) * (rank == 1 ? 0.95 : 0.75);
     paintSuit(c, suit, Rect.fromCenter(center: body.center.translate(0, r.height * 0.04), width: g, height: g), col);
+  } else {
+    // Gerçek iskambil gibi: değer kadar simge, klasik dizilişte; alt yarıdakiler ters.
+    final pips = _pips[rank.clamp(2, 10)]!;
+    final area = Rect.fromLTRB(r.left + w * 0.34, r.top + r.height * 0.17, r.right - w * 0.34, r.bottom - r.height * 0.17);
+    final g = math.min(w * 0.17, area.height * (rank >= 9 ? 0.19 : 0.23));
+    for (final (px, py) in pips) {
+      final o = Offset(area.left + area.width * px, area.top + area.height * py);
+      if (py > 0.5) {
+        c.save();
+        c.translate(o.dx, o.dy);
+        c.rotate(math.pi);
+        paintSuit(c, suit, Rect.fromCenter(center: Offset.zero, width: g, height: g), col);
+        c.restore();
+      } else {
+        paintSuit(c, suit, Rect.fromCenter(center: o, width: g, height: g), col);
+      }
+    }
   }
 }
+
+const _pips = <int, List<(double, double)>>{
+  2: [(0.5, 0), (0.5, 1)],
+  3: [(0.5, 0), (0.5, 0.5), (0.5, 1)],
+  4: [(0, 0), (1, 0), (0, 1), (1, 1)],
+  5: [(0, 0), (1, 0), (0.5, 0.5), (0, 1), (1, 1)],
+  6: [(0, 0), (1, 0), (0, 0.5), (1, 0.5), (0, 1), (1, 1)],
+  7: [(0, 0), (1, 0), (0.5, 0.25), (0, 0.5), (1, 0.5), (0, 1), (1, 1)],
+  8: [(0, 0), (1, 0), (0.5, 0.25), (0, 0.5), (1, 0.5), (0.5, 0.75), (0, 1), (1, 1)],
+  9: [(0, 0), (1, 0), (0, 1 / 3), (1, 1 / 3), (0.5, 0.5), (0, 2 / 3), (1, 2 / 3), (0, 1), (1, 1)],
+  10: [(0, 0), (1, 0), (0.5, 1 / 6), (0, 1 / 3), (1, 1 / 3), (0, 2 / 3), (1, 2 / 3), (0.5, 5 / 6), (0, 1), (1, 1)],
+};
 
 /// 78'lik destenin özel kartları: at (süvari), numaralı kozlar ve Kaçak.
 /// Kozlar resimsiz: büyük numara, altın şerit ve basamak çubuğu.
@@ -349,5 +378,38 @@ void paintSlot(Canvas c, Rect r, {String? label, int? suit}) {
   } else if (label != null) {
     final t = _label(label, r.width * 0.34, Colors.white.withValues(alpha: 0.35));
     t.paint(c, r.center - Offset(t.width / 2, t.height / 2));
+  }
+}
+
+/// Kâğıt oyunlarının masası: koyu yeşil çuha, ortada ışık, kenarda gölge.
+class FeltTable extends StatelessWidget {
+  final Widget child;
+  const FeltTable({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0, -0.2),
+            radius: 1.1,
+            colors: [Color(0xFF2F8A5B), Color(0xFF1C6143), Color(0xFF123F2C)],
+            stops: [0, 0.65, 1],
+          ),
+        ),
+        child: CustomPaint(painter: _FeltGrain(), child: child),
+      );
+}
+
+class _FeltGrain extends CustomPainter {
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+
+  @override
+  void paint(Canvas c, Size s) {
+    final r = math.Random(11);
+    final p = Paint()..color = Colors.white.withValues(alpha: 0.025);
+    for (var i = 0; i < 260; i++) {
+      c.drawCircle(Offset(r.nextDouble() * s.width, r.nextDouble() * s.height), 0.6 + r.nextDouble() * 0.9, p);
+    }
   }
 }

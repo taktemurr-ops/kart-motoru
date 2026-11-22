@@ -11,7 +11,7 @@ enum Pick { single, ordered, anyFaceUp, supermove }
 enum Empty { any, king, none }
 
 /// Kart birimleri: genişlik 1, yükseklik 1.4, aralık 0.1.
-const kCardH = 1.4, kGapX = 1.12, kRowY = 1.4 + 0.28;
+const kCardH = 1.4, kGapX = 1.06, kRowY = 1.4 + 0.28;
 
 /// Klondike, FreeCell, Spider, Yukon, Scorpion, Forty Thieves, Canfield ve
 /// solitaire paketindeki türevlerin tamamını kapsayan ayarlanabilir kurallar.

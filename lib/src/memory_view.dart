@@ -126,7 +126,9 @@ class _MemoryViewState extends State<MemoryView> {
       }, ctx.lang);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FeltTable(child: _build(context));
+
+  Widget _build(BuildContext context) {
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth - 16, h = cons.maxHeight - 110;
       _gap = 6;

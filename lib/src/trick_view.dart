@@ -367,7 +367,9 @@ class _TrickViewState extends State<TrickView> {
       );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FeltTable(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final trumpTxt = s.trump >= 0 && s.trump < 4 ? ['♠', '♥', '♦', '♣'][s.trump] : null;
     final status = rules.status(s, ctx.lang);
     return LayoutBuilder(builder: (context, cons) {
