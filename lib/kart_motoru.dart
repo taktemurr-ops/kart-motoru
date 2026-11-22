@@ -37,3 +37,7 @@ export 'src/trail.dart';
 export 'src/trail_view.dart';
 export 'src/square.dart';
 export 'src/square_view.dart';
+export 'src/tile_painter.dart';
+export 'src/okey.dart';
+export 'src/domino.dart';
+export 'src/mahjong.dart';

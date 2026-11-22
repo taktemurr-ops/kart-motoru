@@ -9,6 +9,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'tile_painter.dart';
 import 'cards.dart';
 import 'table_ai.dart';
 import 'table_engine.dart';
@@ -160,8 +161,8 @@ class _TableViewState extends State<TableView> {
 
   Widget _card(KCard c, double w, {bool up = true, bool dim = false, bool hl = false}) => SizedBox(
         width: w,
-        height: w * 1.4,
-        child: CustomPaint(painter: _CardP(c, up, _style, dim, hl)),
+        height: w * rules.tileAspect,
+        child: CustomPaint(painter: _CardP(c, up, _style, dim, hl, rules.tileStyle)),
       );
 
   String _seatName(int seat) {
@@ -200,7 +201,7 @@ class _TableViewState extends State<TableView> {
     if (p.isEmpty) {
       body = SizedBox(
         width: cw,
-        height: cw * 1.4,
+        height: cw * rules.tileAspect,
         child: CustomPaint(painter: _SlotP()),
       );
     } else if (pv.spread) {
@@ -281,7 +282,7 @@ class _TableViewState extends State<TableView> {
         _badge(0),
         const SizedBox(height: 4),
         SizedBox(
-          height: cw * 1.4 + 18,
+          height: cw * rules.tileAspect + 18,
           child: LayoutBuilder(builder: (context, c2) {
             final cards = s.hands[0];
             final k = cards.length;
@@ -330,12 +331,20 @@ class _CardP extends CustomPainter {
   final KCard c;
   final bool up, dim, hl;
   final CardStyle style;
-  _CardP(this.c, this.up, this.style, this.dim, this.hl);
+  final int tile;
+  _CardP(this.c, this.up, this.style, this.dim, this.hl, this.tile);
   @override
-  void paint(Canvas canvas, Size size) =>
+  void paint(Canvas canvas, Size size) {
+    if (tile == kTileCard) {
       paintCard(canvas, Offset.zero & size, c, faceUp: up, style: style, dim: dim, highlight: hl);
+    } else {
+      paintTile(canvas, Offset.zero & size, c, tile,
+          faceUp: up, backA: style.backA, backB: style.backB, dim: dim, highlight: hl, colorBlind: style.colorBlind);
+    }
+  }
+
   @override
-  bool shouldRepaint(covariant _CardP o) => o.c != c || o.up != up || o.dim != dim || o.hl != hl || o.style != style;
+  bool shouldRepaint(covariant _CardP o) => o.c != c || o.up != up || o.dim != dim || o.hl != hl || o.style != style || o.tile != tile;
 }
 
 class _SlotP extends CustomPainter {

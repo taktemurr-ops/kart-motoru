@@ -169,4 +169,10 @@ abstract class TableRules {
 
   /// Koltuk elinin kaç kartının herkesçe görülebildiği (Durak'ta alınan kartlar).
   bool get revealHands => false;
+
+  /// Çizim: 0 kart, 1 okey taşı, 2 domino, 3 mahjong (tile_painter.dart).
+  int get tileStyle => 0;
+
+  /// Kart/taş yüksekliğinin genişliğe oranı.
+  double get tileAspect => 1.4;
 }
