@@ -33,3 +33,7 @@ export 'src/memory_rules.dart';
 export 'src/memory_view.dart';
 export 'src/realtime.dart';
 export 'src/realtime_view.dart';
+export 'src/trail.dart';
+export 'src/trail_view.dart';
+export 'src/square.dart';
+export 'src/square_view.dart';
