@@ -109,4 +109,26 @@ void main() {
       }
     }, timeout: const Timeout(Duration(minutes: 8)));
   });
+
+  test('101 okey: yapay zekâ elini açar ve sık sık bitirir', () {
+    final rules = games['101']!;
+    final planner = LevelPlanner(gameId: '101', optionalMechanics: const []);
+    var opened = 0, out = 0, n = 0;
+    for (final lv in [1, 7, 33, 120, 555, 1234, 4321, 9000, 20000, 41000]) {
+      final gl = rules.build(planner.spec(lv));
+      for (final seed in [1, 2, 3]) {
+        final end = TableGameRules.simulate(gl.puzzle, quick: true, seed: seed);
+        final rr = gl.puzzle.rules as Okey101Rules;
+        n++;
+        for (var p = 0; p < end.seats; p++) {
+          if (rr.opened(end, p)) opened++;
+        }
+        if (end.hands.any((h) => h.isEmpty)) out++;
+      }
+    }
+    // ignore: avoid_print
+    print('101: $n el, açan oyuncu $opened, bitirilen el $out');
+    expect(opened, greaterThan(n));
+    expect(out * 3, greaterThanOrEqualTo(n));
+  }, timeout: const Timeout(Duration(minutes: 8)));
 }

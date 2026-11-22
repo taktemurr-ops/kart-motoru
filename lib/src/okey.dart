@@ -867,26 +867,57 @@ class Okey101Rules extends OkeyRules {
   TAction quick(TableState s, SeededRandom r) {
     final p = s.turn;
     final h = s.hands[p];
-    if (s.vars[0] == 0) return const TAction(1, [], 0);
-    final l = legalActions(s);
-    for (final k in const [5, 6]) {
-      final o = l.where((a) => a.kind == k);
-      if (o.isNotEmpty) return o.first;
+    final open = opened(s, p);
+    if (s.vars[0] == 0) {
+      // Açan oyuncu, atık taş masadaki bir pere işleniyor ya da elini
+      // güçlendiriyorsa onu alır.
+      if (open && s.piles[1].isNotEmpty) {
+        final t = s.piles[1].last;
+        if (okeyMeaning(t, kind(s)) < 0) return const TAction(1, [], 1);
+        for (final mm in melds(s)) {
+          if (mm.length > 2 && okeyGroupValue(meanings(s, [...mm, t])) > 0) return const TAction(1, [], 1);
+        }
+        if (!pairOpened(s, p)) {
+          final before = okeyCoverPlan(meanings(s, h)).$1;
+          final after = okeyCoverPlan(meanings(s, [...h, t])).$1;
+          if (after > before) return const TAction(1, [], 1);
+        }
+      }
+      return const TAction(1, [], 0);
     }
-    final lay = l.where((a) => a.kind == 2).toList()..sort((a, b) => b.cards.length.compareTo(a.cards.length));
-    if (lay.isNotEmpty) return lay.first;
-    final add = l.where((a) => a.kind == 3).toList();
-    if (add.isNotEmpty) return add[r.nextInt(add.length)];
+    final l = legalActions(s);
+    if (!open) {
+      final o5 = l.where((a) => a.kind == 5);
+      if (o5.isNotEmpty) return o5.first;
+      // Çiftle açmak yalnızca çiftler gerçekten güçlüyse.
+      final o6 = l.where((a) => a.kind == 6);
+      if (o6.isNotEmpty && pairsIn(s, h).length >= 6) return o6.first;
+    } else {
+      final lay = l.where((a) => a.kind == 2).toList()..sort((a, b) => b.cards.length.compareTo(a.cards.length));
+      if (lay.isNotEmpty) return lay.first;
+      final add = l.where((a) => a.kind == 3).toList();
+      if (add.isNotEmpty) {
+        // Jokeri ancak son çare olarak işle.
+        add.sort((a, b) => (okeyMeaning(a.cards.first, kind(s)) < 0 ? 1 : 0).compareTo(okeyMeaning(b.cards.first, kind(s)) < 0 ? 1 : 0));
+        return add.first;
+      }
+    }
     final m = meanings(s, h);
-    var best = 0, bv = 1 << 30;
+    final skipped = pairOpened(s, p) ? const <int>[] : okeyCoverPlan(m).$2;
+    var best = -1, bv = 1 << 30;
     for (var i = 0; i < h.length; i++) {
-      // Açmamışken değeri yüksek ve yalnız taşları at.
-      final v = okeyKeepScore(m, i) * 5 - value(s, h[i]) + r.nextInt(3);
+      if (m[i] < 0 && h.length > 1) continue; // okey elde kalır
+      final out = skipped.contains(m[i]);
+      // Açmadan önce yüksek taşlar 101'e ulaşmak için değerlidir: dışarıda
+      // kalan düşük taşları at. Açtıktan sonra ceza için yüksek taşları at.
+      final vScore = open ? -value(s, h[i]) * 3 : value(s, h[i]) * 2;
+      final v = okeyKeepScore(m, i) * 4 + (out ? 0 : 400) + vScore + r.nextInt(3);
       if (v < bv) {
         bv = v;
         best = i;
       }
     }
+    if (best < 0) best = 0;
     return TAction(0, [h[best]]);
   }
 
