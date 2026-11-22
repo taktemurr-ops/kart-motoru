@@ -82,7 +82,7 @@ bool _grp(List<int> cnt, int w) {
       return wl > 0 && ext(s, nx, wl - 1, len + 1);
     }
 
-    for (var s = n0 - math.min(w, n0); s <= n0; s++) {
+    for (var s = n0 - (w < n0 ? w : n0); s <= n0; s++) {
       if (ext(s, n0, w - (n0 - s), n0 - s + 1)) return true;
     }
     if (n0 == 0) {
