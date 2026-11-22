@@ -42,6 +42,9 @@ class _TableViewState extends State<TableView> {
   // ---- Koltuklar ---------------------------------------------------------------
   StreamSubscription<(int, String)>? _sub;
   final List<(int, String)> _inbox = [];
+
+  /// Bu koltuğun hamlesi ağdan gelmiş ve sırasını bekliyor mu.
+  bool _queued(int seat) => _inbox.any((e) => e.$1 == seat);
   Completer<void>? _wake;
 
   /// Sırayla oynamada el, telefon elden ele geçene kadar kapalı tutulur.
@@ -96,11 +99,15 @@ class _TableViewState extends State<TableView> {
     });
     final m = _match;
     if (m != null) {
+      // Maça geri dönüş: o ana kadarki hamleler beklemeden yeniden oynanır.
+      _inbox.addAll(m.history);
       _sub = m.moves.listen((e) {
         _inbox.add(e);
         final w = _wake;
         _wake = null;
         w?.complete();
+        // Koltuğumuz bir süre bota kaldıysa onun hamlesi sıradaki yerel hamledir.
+        if (mounted && !_ended && e.$1 == s.turn && _isLocal(s.turn)) _advance();
       });
     }
     if (ctx.passAndPlay) {
@@ -124,11 +131,11 @@ class _TableViewState extends State<TableView> {
   Future<void> _advance() async {
     if (_busy) return;
     _busy = true;
-    while (mounted && !_ended && !s.over && !_isLocal(s.turn)) {
+    while (mounted && !_ended && !s.over && (!_isLocal(s.turn) || _queued(s.turn))) {
       final seat = s.turn;
       final mt = _match;
       TAction act;
-      if (mt != null && (!_isAi(seat) || !mt.isHost)) {
+      if (mt != null && (_queued(seat) || !_isAi(seat) || !mt.isHost)) {
         final i = await _remote(seat);
         if (!mounted || _ended) return;
         final legal = rules.legalActions(s);

@@ -44,6 +44,9 @@ class _TrickViewState extends State<TrickView> {
   // ---- Koltuklar ---------------------------------------------------------------
   StreamSubscription<(int, String)>? _sub;
   final List<(int, String)> _inbox = [];
+
+  /// Bu koltuğun hamlesi ağdan gelmiş ve sırasını bekliyor mu.
+  bool _queued(int seat) => _inbox.any((e) => e.$1 == seat);
   Completer<void>? _wake;
   bool _cover = false;
   int _shown = 0;
@@ -99,11 +102,15 @@ class _TrickViewState extends State<TrickView> {
     });
     final m = _match;
     if (m != null) {
+      // Maça geri dönüş: o ana kadarki hamleler beklemeden yeniden oynanır.
+      _inbox.addAll(m.history);
       _sub = m.moves.listen((e) {
         _inbox.add(e);
         final w = _wake;
         _wake = null;
         w?.complete();
+        // Koltuğumuz bir süre bota kaldıysa onun hamlesi sıradaki yerel hamledir.
+        if (mounted && !_ended && e.$1 == s.turn && _isLocal(s.turn)) _advance();
       });
     }
     if (ctx.passAndPlay) {
@@ -130,10 +137,10 @@ class _TrickViewState extends State<TrickView> {
   Future<void> _advance() async {
     if (_busy) return;
     _busy = true;
-    while (mounted && !_ended && s.phase != TrickPhase.over && !_isLocal(s.turn)) {
+    while (mounted && !_ended && s.phase != TrickPhase.over && (!_isLocal(s.turn) || _queued(s.turn))) {
       final seat = s.turn;
       final mt = _match;
-      if (mt != null && (!_isAi(seat) || !mt.isHost)) {
+      if (mt != null && (_queued(seat) || !_isAi(seat) || !mt.isHost)) {
         final mv = await _remote(seat);
         if (!mounted || _ended) return;
         if (mv == null) continue;
@@ -195,7 +202,7 @@ class _TrickViewState extends State<TrickView> {
         _shownLeader = leader;
         _shownWinner = s.lastWinner;
       });
-      await Future<void>.delayed(_pace * 1.6);
+      if (_inbox.isEmpty) await Future<void>.delayed(_pace * 1.6);
       if (!mounted) return;
       ctx.sfx(s.lastWinner == me || (rules.partnerships && s.lastWinner == (me + 2) % s.seats) ? Sfx.coin : Sfx.tap);
       setState(() => _shownTrick = const []);
