@@ -345,18 +345,23 @@ class _TableViewState extends State<TableView> {
       final n = math.max(1, s.hands[me].length);
       final cw = math.min(72.0, math.min(w / (n * 0.62 + 0.6), h * 0.15));
       final pw = math.min(64.0, w * 0.14);
+      // Koyu masa zemininde üst bilgiler açık renkle yazılır (okunurluk).
+      final bg = ctx.background;
+      final dark = bg.isNotEmpty && bg.map((c) => c.computeLuminance()).reduce((a, b) => a + b) / bg.length < 0.3;
+      final fg = dark ? const Color(0xFFF5EFE6) : null;
+      final fgDim = dark ? const Color(0xCCF5EFE6) : null;
       return Column(children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Row(children: [
             Expanded(
                 child: Text(level.goal.text(rules, s, ctx.lang),
-                    style: Theme.of(context).textTheme.titleSmall, maxLines: 2, overflow: TextOverflow.ellipsis)),
-            const Icon(Icons.timer_outlined, size: 18),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg), maxLines: 2, overflow: TextOverflow.ellipsis)),
+            Icon(Icons.timer_outlined, size: 18, color: fg),
+            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}', style: TextStyle(color: fg)),
           ]),
         ),
-        if (status.isNotEmpty) Text(status, style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+        if (status.isNotEmpty) Text(status, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: fgDim), textAlign: TextAlign.center),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Wrap(spacing: 8, runSpacing: 6, alignment: WrapAlignment.center, children: [

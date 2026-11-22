@@ -378,13 +378,18 @@ class _TrickViewState extends State<TrickView> {
       final legal = _myTurn && s.phase == TrickPhase.play ? rules.legalPlays(s, s.turn).toSet() : <KCard>{};
       final trickCards = _shownTrick.isNotEmpty ? _shownTrick : s.trick;
       final trickLeader = _shownTrick.isNotEmpty ? _shownLeader : s.leader;
+      // Koyu masa zemininde üst bilgiler açık renkle yazılır (okunurluk).
+      final bg = ctx.background;
+      final dark = bg.isNotEmpty && bg.map((c) => c.computeLuminance()).reduce((a, b) => a + b) / bg.length < 0.3;
+      final fg = dark ? const Color(0xFFF5EFE6) : null;
+      final fgDim = dark ? const Color(0xCCF5EFE6) : null;
       return Column(children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Row(children: [
             Expanded(
               child: Text(level.goal.text(rules, s, ctx.lang),
-                  style: Theme.of(context).textTheme.titleSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg), maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
             if (trumpTxt != null)
               Container(
@@ -395,14 +400,14 @@ class _TrickViewState extends State<TrickView> {
                     style: TextStyle(color: _style.suitColor(s.trump), fontWeight: FontWeight.w800)),
               ),
             const SizedBox(width: 8),
-            const Icon(Icons.timer_outlined, size: 18),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
+            Icon(Icons.timer_outlined, size: 18, color: fg),
+            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}', style: TextStyle(color: fg)),
           ]),
         ),
         if (status.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
-            child: Text(status, style: Theme.of(context).textTheme.bodySmall),
+            child: Text(status, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: fgDim)),
           ),
         Expanded(
           child: Stack(children: [
