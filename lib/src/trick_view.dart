@@ -277,7 +277,7 @@ class _TrickViewState extends State<TrickView> {
       final tie = [for (var i = 0; i < u.length; i++) if (u[i] == u[w] && !team.contains(i)) i].isNotEmpty;
       final iWon = !tie && (_match != null ? team.contains(_match!.mySeat) : true);
       ctx.sfx(iWon ? Sfx.win : Sfx.lose);
-      unawaited(_match?.finish(tie ? -1 : w));
+      unawaited(_match?.finish(tie ? -1 : w, iWon: iWon));
       ctx.finish(RoundResult(
         won: iWon,
         score: iWon ? 300 : 30,

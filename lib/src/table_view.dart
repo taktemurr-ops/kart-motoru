@@ -226,7 +226,7 @@ class _TableViewState extends State<TableView> {
       final team = rules.partnerships ? {w, (w + 2) % s.seats} : {w};
       final iWon = !tie && (_match != null ? team.contains(_match!.mySeat) : true);
       ctx.sfx(iWon ? Sfx.win : Sfx.lose);
-      unawaited(_match?.finish(tie ? -1 : w));
+      unawaited(_match?.finish(tie ? -1 : w, iWon: iWon));
       ctx.finish(RoundResult(
         won: iWon,
         score: iWon ? 300 : 30,
