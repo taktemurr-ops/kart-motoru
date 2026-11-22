@@ -563,7 +563,7 @@ class RealtimeRules extends GameRules<RtLevel> {
   RealtimeRules({required this.gameId, required this.kind});
 
   @override
-  int get levelCount => 50000;
+  int get levelCount => 100000;
   @override
   List<String> get optionalMechanics => const [];
   @override

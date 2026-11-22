@@ -46,7 +46,7 @@ class TableGameRules extends GameRules<TableLevel> {
   final bool quickValidate;
 
   TableGameRules(
-      {required this.gameId, required this.rulesFor, TableGoal Function(int)? goalFor, this.levels = 50000, this.aiScale = 1, this.quickValidate = false})
+      {required this.gameId, required this.rulesFor, TableGoal Function(int)? goalFor, this.levels = 100000, this.aiScale = 1, this.quickValidate = false})
       : goalFor = goalFor ?? ((_) => TableGoal.win);
 
   @override

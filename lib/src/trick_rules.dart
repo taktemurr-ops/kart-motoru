@@ -44,7 +44,7 @@ class TrickGameRules extends GameRules<TrickLevel> {
     required this.gameId,
     required this.rulesFor,
     TrickGoal Function(int difficulty)? goalFor,
-    this.levels = 50000,
+    this.levels = 100000,
   }) : goalFor = goalFor ?? ((_) => TrickGoal.win);
 
   @override
