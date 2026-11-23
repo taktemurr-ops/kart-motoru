@@ -331,6 +331,51 @@ class _TableViewState extends State<TableView> {
     ]);
   }
 
+  /// Okey/remi taşları için iki katlı ahşap ıstaka: taşlar tek sıraya
+  /// sıkışmaz, rakamlar büyük ve okunur kalır.
+  Widget _rack(TableState s, int me, double w, double h, List<TAction> legal, Set<KCard> playable) {
+    final cards = s.hands[me];
+    final k = cards.length;
+    final perRow = (k + 1) ~/ 2;
+    final tw = math.min(60.0, math.min((w - 24) / (perRow * 1.04), h * 0.085));
+    final th = tw * rules.tileAspect;
+    final rowH = th + 10;
+    Widget row(int from, int to) => SizedBox(
+          height: rowH,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var i = from; i < to; i++)
+              () {
+                final c = cards[i];
+                final ok = playable.contains(c) || legal.any((a) => a.cards.contains(c));
+                final sel = _selected.contains(c);
+                final hl = _hint != null && _hint!.cards.contains(c);
+                return Padding(
+                  padding: EdgeInsets.only(left: tw * 0.02, right: tw * 0.02, bottom: sel ? 8 : 0, top: sel ? 0 : 8),
+                  child: GestureDetector(
+                    onTap: () => _tapCard(c),
+                    child: _card(c, tw, dim: s.turn == me && legal.isNotEmpty && !ok, hl: hl || sel),
+                  ),
+                );
+              }(),
+          ]),
+        );
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+            begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFC08A5A), Color(0xFF8A5A36)]),
+        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 4))],
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        row(0, perRow),
+        Container(height: 3, color: const Color(0xFF5C3A20)),
+        row(perRow, k),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => FeltTable(child: _build(context));
 
@@ -403,6 +448,8 @@ class _TableViewState extends State<TableView> {
             height: cw * rules.tileAspect + 18,
             onTap: () => setState(() => _cover = false),
           )
+        else if (rules.tileStyle != kTileCard && s.hands[me].length > 11)
+          _rack(s, me, w, h, legal, playable)
         else
         SizedBox(
           height: cw * rules.tileAspect + 18,
