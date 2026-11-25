@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:studio_core/core/game_rules.dart';
 import 'package:studio_core/core/level_plan.dart';
 import 'package:studio_core/core/missions.dart';
@@ -23,9 +25,36 @@ class RtLevel {
 int rtAiMs(int d) => const [1900, 1600, 1350, 1150, 1000, 850, 720, 620, 540, 470][(d - 1).clamp(0, 9)];
 
 /// Bütün hızlı oyunların ortak arayüzü.
+///
+/// Çevrimdışı: koltuk 0 oyuncu, diğerleri yapay zekâ. Çevrimiçi: ev sahibi
+/// oyunu yürütür, her koltuğun eylemi [act] ile uygulanır; bağlı insan
+/// oyuncuların koltuklarında [ai] kapatılır, kopan oyuncunun yerine yapay
+/// zekâ oynar. Durum [encode]/[decode] ile ağdan gider (devralma dahil).
 abstract class RtGame {
   int time = 0;
   bool over = false;
+
+  /// Masadaki koltuk sayısı.
+  int get seats => 2;
+
+  /// Yapay zekânın oynadığı koltuklar (çevrimdışı: 0 dışındakiler).
+  late final List<bool> ai = [for (var p = 0; p < seats; p++) p != 0];
+
+  /// Çevrimiçi eylem: "S<deste>,<tepki ms>" yakala, "P<kart>" oyna,
+  /// "M<kaynak>" taşı, "D" çek, "W<benim>,<orta>" değiş, "K" Kemps!
+  /// Geçersiz ya da geç kalmış eylemde false.
+  bool act(int p, String a);
+
+  /// Ağ durumu (tamsayılar): devralan cihaz oyunu buradan sürdürür.
+  List<int> encode();
+  void decode(List<int> v);
+
+  /// Gösterim kopyası için: koltuk [k] 0'a gelecek şekilde döndür.
+  void rotate(int k);
+
+  /// Koltuğun puanı ve (bitince) kazanan koltuk (-1 berabere).
+  int scoreOf(int p);
+  int get winnerSeat;
 
   /// Oyuncu kazandı mı (bitince).
   bool get playerWon;
@@ -59,9 +88,19 @@ class SnapGame extends RtGame {
   int turn = 0;
   int nextFlipAt = 600;
   bool snapOpen = false;
-  int aiSnapAt = -1;
+
+  /// Koltuk başına yapay zekânın "Yakala!" diyeceği an (-1 yok).
+  final aiSnapAt = [-1, -1];
   int flips = 0;
   int lastWinner = -1;
+
+  /// Çevrimiçi: ağ gecikmesini dengeleyen bekleme (ms). İlk basıştan sonra bu
+  /// süre içinde gelen basışlar tepki süresine göre sıralanır; 0: hemen.
+  int fairMs = 0;
+  int openedAt = 0;
+  int claimUntil = -1;
+  int takenFlip = -1;
+  final Map<int, int> claims = {};
   late final int flipMs = 1250 - level.difficulty * 50;
   bool get sandwich => level.difficulty >= 5;
   static const maxFlips = 120;
@@ -89,7 +128,10 @@ class SnapGame extends RtGame {
     turn = 1 - turn;
     flips++;
     snapOpen = _match();
-    aiSnapAt = snapOpen ? time + level.aiMs + r.nextInt(level.aiMs ~/ 3 + 1) - level.aiMs ~/ 6 : -1;
+    openedAt = time;
+    for (var p = 0; p < 2; p++) {
+      aiSnapAt[p] = snapOpen && ai[p] ? time + level.aiMs + r.nextInt(level.aiMs ~/ 3 + 1) - level.aiMs ~/ 6 : -1;
+    }
     if (flips >= maxFlips) over = true;
   }
 
@@ -97,25 +139,55 @@ class SnapGame extends RtGame {
     stacks[p].insertAll(0, center.reversed);
     center.clear();
     snapOpen = false;
-    aiSnapAt = -1;
+    aiSnapAt[0] = -1;
+    aiSnapAt[1] = -1;
+    claims.clear();
+    claimUntil = -1;
+    takenFlip = flips;
     lastWinner = p;
     turn = p;
     nextFlipAt = time + flipMs + 300;
   }
 
   /// Oyuncu "Yakala!" dedi.
-  bool snap() {
+  bool snap() => snapBy(0);
+
+  /// Koltuk [p] "Yakala!" dedi.
+  bool snapBy(int p) {
     if (over) return false;
     if (snapOpen) {
-      _take(0);
+      _take(p);
       return true;
     }
     // Yanlış yakalama: iki kart rakibe
-    for (var k = 0; k < 2 && stacks[0].isNotEmpty; k++) {
-      stacks[1].insert(0, stacks[0].removeLast());
+    for (var k = 0; k < 2 && stacks[p].isNotEmpty; k++) {
+      stacks[1 - p].insert(0, stacks[p].removeLast());
     }
-    if (stacks[0].isEmpty) over = true;
+    if (stacks[p].isEmpty) over = true;
     return false;
+  }
+
+  /// Çevrimiçi basış: [react] kartın görünmesinden basışa kadar geçen süre.
+  void claim(int p, int react) {
+    if (fairMs <= 0) {
+      _take(p);
+      return;
+    }
+    claims[p] = math.min(claims[p] ?? 999999, react);
+    if (claimUntil < 0) claimUntil = time + fairMs;
+  }
+
+  @override
+  bool act(int p, String a) {
+    if (over || p < 0 || p > 1 || !a.startsWith('S')) return false;
+    final f = a.substring(1).split(',');
+    final flip = int.tryParse(f[0]) ?? -1;
+    final react = f.length > 1 ? (int.tryParse(f[1]) ?? 0).clamp(0, 5000) : 0;
+    // Başka bir deste için ya da deste alındıktan sonra gelen basış: yok sayılır.
+    if (flip != flips || takenFlip == flips) return false;
+    if (!snapOpen) return snapBy(p);
+    claim(p, react);
+    return true;
   }
 
   @override
@@ -123,8 +195,29 @@ class SnapGame extends RtGame {
     final end = time + ms;
     while (!over && time < end) {
       time += 10;
-      if (snapOpen && aiSnapAt >= 0 && time >= aiSnapAt) _take(1);
-      if (time >= nextFlipAt) {
+      for (var p = 0; p < 2; p++) {
+        if (snapOpen && aiSnapAt[p] >= 0 && time >= aiSnapAt[p]) {
+          if (fairMs > 0) {
+            claim(p, aiSnapAt[p] - openedAt);
+            aiSnapAt[p] = -1;
+          } else {
+            _take(p);
+          }
+        }
+      }
+      if (claimUntil >= 0 && time >= claimUntil) {
+        var best = -1;
+        for (final e in claims.entries) {
+          if (best < 0 || e.value < claims[best]! || (e.value == claims[best]! && e.key < best)) best = e.key;
+        }
+        if (best >= 0 && snapOpen) {
+          _take(best);
+        } else {
+          claims.clear();
+          claimUntil = -1;
+        }
+      }
+      if (time >= nextFlipAt && claimUntil < 0) {
         _flip();
         nextFlipAt = time + flipMs;
       }
@@ -154,6 +247,69 @@ class SnapGame extends RtGame {
   int get aiScore => stacks[1].length;
   @override
   bool get playerWon => over && playerScore > aiScore;
+
+  @override
+  int scoreOf(int p) => stacks[p].length;
+  @override
+  int get winnerSeat => stacks[0].length > stacks[1].length ? 0 : (stacks[1].length > stacks[0].length ? 1 : -1);
+
+  @override
+  List<int> encode() {
+    final w = RtWriter()
+      ..i(time)
+      ..b(over)
+      ..i(turn)
+      ..i(nextFlipAt)
+      ..b(snapOpen)
+      ..i(aiSnapAt[0])
+      ..i(aiSnapAt[1])
+      ..i(flips)
+      ..i(lastWinner)
+      ..i(openedAt)
+      ..i(claimUntil)
+      ..i(takenFlip)
+      ..l([for (final e in claims.entries) ...[e.key, e.value]])
+      ..l(stacks[0])
+      ..l(stacks[1])
+      ..l(center);
+    return w.out;
+  }
+
+  @override
+  void decode(List<int> v) {
+    final r = RtReader(v);
+    time = r.i();
+    over = r.b();
+    turn = r.i();
+    nextFlipAt = r.i();
+    snapOpen = r.b();
+    aiSnapAt[0] = r.i();
+    aiSnapAt[1] = r.i();
+    flips = r.i();
+    lastWinner = r.i();
+    openedAt = r.i();
+    claimUntil = r.i();
+    takenFlip = r.i();
+    final c = r.l();
+    claims.clear();
+    for (var i = 0; i + 1 < c.length; i += 2) {
+      claims[c[i]] = c[i + 1];
+    }
+    r.into(stacks[0]);
+    r.into(stacks[1]);
+    r.into(center);
+  }
+
+  @override
+  void rotate(int k) {
+    if (k.isEven) return;
+    swapLists(stacks[0], stacks[1]);
+    turn = 1 - turn;
+    if (lastWinner >= 0) lastWinner = 1 - lastWinner;
+    final a = aiSnapAt[0];
+    aiSnapAt[0] = aiSnapAt[1];
+    aiSnapAt[1] = a;
+  }
 }
 
 // ======================================================================
@@ -171,7 +327,9 @@ class SpeedGame extends RtGame {
   final draws = [<KCard>[], <KCard>[]];
   final centers = [<KCard>[], <KCard>[]];
   final sides = [<KCard>[], <KCard>[]];
-  int aiNextAt = 0;
+
+  /// Koltuk başına yapay zekânın sıradaki hamle anı.
+  final aiNext = [0, 0];
   int stallSince = 0;
 
   SpeedGame(this.level) : r = SeededRandom(mixSeed([level.seed, 72])) {
@@ -190,7 +348,7 @@ class SpeedGame extends RtGame {
     }
     centers[0].add(d.removeLast());
     centers[1].add(d.removeLast());
-    aiNextAt = level.aiMs;
+    aiNext[1] = level.aiMs;
   }
 
   int? targetFor(KCard c) {
@@ -240,10 +398,11 @@ class SpeedGame extends RtGame {
     final end = time + ms;
     while (!over && time < end) {
       time += 10;
-      if (time >= aiNextAt) {
-        final opts = hands[1].where((c) => targetFor(c) != null).toList();
-        if (opts.isNotEmpty) play(1, opts[r.nextInt(opts.length)]);
-        aiNextAt = time + level.aiMs + r.nextInt(level.aiMs ~/ 2 + 1) - level.aiMs ~/ 4;
+      for (var p = 0; p < 2; p++) {
+        if (!ai[p] || time < aiNext[p]) continue;
+        final opts = hands[p].where((c) => targetFor(c) != null).toList();
+        if (opts.isNotEmpty) play(p, opts[r.nextInt(opts.length)]);
+        aiNext[p] = time + level.aiMs + r.nextInt(level.aiMs ~/ 2 + 1) - level.aiMs ~/ 4;
       }
       if (!_anyMove(0) && !_anyMove(1) && time - stallSince > 900) _refresh();
       if (time > 240000) over = true;
@@ -267,6 +426,57 @@ class SpeedGame extends RtGame {
   int get aiScore => 20 - hands[1].length - draws[1].length;
   @override
   bool get playerWon => over && hands[0].isEmpty && draws[0].isEmpty;
+
+  @override
+  bool act(int p, String a) {
+    if (p < 0 || p > 1 || !a.startsWith('P')) return false;
+    final c = int.tryParse(a.substring(1));
+    return c != null && play(p, c);
+  }
+
+  @override
+  int scoreOf(int p) => 20 - hands[p].length - draws[p].length;
+  @override
+  int get winnerSeat {
+    for (var p = 0; p < 2; p++) {
+      if (hands[p].isEmpty && draws[p].isEmpty) return p;
+    }
+    return scoreOf(0) > scoreOf(1) ? 0 : (scoreOf(1) > scoreOf(0) ? 1 : -1);
+  }
+
+  @override
+  List<int> encode() {
+    final w = RtWriter()
+      ..i(time)
+      ..b(over)
+      ..i(stallSince)
+      ..i(aiNext[0])
+      ..i(aiNext[1]);
+    for (final x in [...hands, ...draws, ...centers, ...sides]) {
+      w.l(x);
+    }
+    return w.out;
+  }
+
+  @override
+  void decode(List<int> v) {
+    final r = RtReader(v);
+    time = r.i();
+    over = r.b();
+    stallSince = r.i();
+    aiNext[0] = r.i();
+    aiNext[1] = r.i();
+    for (final x in [...hands, ...draws, ...centers, ...sides]) {
+      r.into(x);
+    }
+  }
+
+  @override
+  void rotate(int k) {
+    if (k.isEven) return;
+    swapLists(hands[0], hands[1]);
+    swapLists(draws[0], draws[1]);
+  }
 }
 
 // ======================================================================
@@ -281,7 +491,9 @@ class NertzGame extends RtGame {
   final waste = [<KCard>[], <KCard>[]];
   final foundations = <List<KCard>>[];
   final played = [0, 0];
-  int aiNextAt = 0;
+
+  /// Koltuk başına yapay zekânın sıradaki hamle anı.
+  final aiNext = [0, 0];
   static const timeLimit = 300000;
 
   NertzGame(this.level) : r = SeededRandom(mixSeed([level.seed, 73])) {
@@ -296,7 +508,7 @@ class NertzGame extends RtGame {
       }
       stock[p].addAll(d);
     }
-    aiNextAt = level.aiMs;
+    aiNext[1] = level.aiMs;
   }
 
   static int owner(KCard c) => c >= 52 ? 1 : 0;
@@ -396,9 +608,10 @@ class NertzGame extends RtGame {
     final end = time + ms;
     while (!over && time < end) {
       time += 10;
-      if (time >= aiNextAt) {
-        _greedy(1);
-        aiNextAt = time + (level.aiMs * 0.6).round() + r.nextInt(level.aiMs ~/ 3 + 1);
+      for (var p = 0; p < 2; p++) {
+        if (!ai[p] || time < aiNext[p] || over) continue;
+        _greedy(p);
+        aiNext[p] = time + (level.aiMs * 0.6).round() + r.nextInt(level.aiMs ~/ 3 + 1);
       }
       if (time >= timeLimit) over = true;
     }
@@ -419,6 +632,86 @@ class NertzGame extends RtGame {
   int get aiScore => score(1);
   @override
   bool get playerWon => over && score(0) > score(1);
+
+  @override
+  bool act(int p, String a) {
+    if (over || p < 0 || p > 1 || a.isEmpty) return false;
+    if (a == 'D') {
+      draw(p);
+      return true;
+    }
+    if (!a.startsWith('M')) return false;
+    final src = int.tryParse(a.substring(1));
+    return src != null && src >= 0 && src <= 5 && moveFrom(p, src);
+  }
+
+  @override
+  int scoreOf(int p) => score(p);
+  @override
+  int get winnerSeat => score(0) > score(1) ? 0 : (score(1) > score(0) ? 1 : -1);
+
+  @override
+  List<int> encode() {
+    final w = RtWriter()
+      ..i(time)
+      ..b(over)
+      ..i(aiNext[0])
+      ..i(aiNext[1])
+      ..i(played[0])
+      ..i(played[1]);
+    for (var p = 0; p < 2; p++) {
+      w
+        ..l(nertz[p])
+        ..l(stock[p])
+        ..l(waste[p]);
+      for (final x in work[p]) {
+        w.l(x);
+      }
+    }
+    w.i(foundations.length);
+    for (final f in foundations) {
+      w.l(f);
+    }
+    return w.out;
+  }
+
+  @override
+  void decode(List<int> v) {
+    final r = RtReader(v);
+    time = r.i();
+    over = r.b();
+    aiNext[0] = r.i();
+    aiNext[1] = r.i();
+    played[0] = r.i();
+    played[1] = r.i();
+    for (var p = 0; p < 2; p++) {
+      r
+        ..into(nertz[p])
+        ..into(stock[p])
+        ..into(waste[p]);
+      for (final x in work[p]) {
+        r.into(x);
+      }
+    }
+    final n = r.i().clamp(0, 104);
+    foundations
+      ..clear()
+      ..addAll([for (var i = 0; i < n; i++) r.l()]);
+  }
+
+  @override
+  void rotate(int k) {
+    if (k.isEven) return;
+    swapLists(nertz[0], nertz[1]);
+    swapLists(stock[0], stock[1]);
+    swapLists(waste[0], waste[1]);
+    for (var i = 0; i < 4; i++) {
+      swapLists(work[0][i], work[1][i]);
+    }
+    final p0 = played[0];
+    played[0] = played[1];
+    played[1] = p0;
+  }
 }
 
 // ======================================================================
@@ -489,18 +782,97 @@ class KempsGame extends RtGame {
     hands[p][i] = mid;
     center[j] = mine;
     lastSwapAt = time;
-    if (p > 0 && hasFour(hands[p]) && aiDeclareAt[p] < 0) {
+    if (ai[p] && hasFour(hands[p]) && aiDeclareAt[p] < 0) {
       aiDeclareAt[p] = time + level.aiMs ~/ 2 + r.nextInt(level.aiMs ~/ 2 + 1);
     }
     return true;
   }
 
+  @override
+  int get seats => players;
+
   /// Oyuncu "Kemps!" dedi.
-  bool declare() {
+  bool declare() => declareBy(0);
+
+  /// Koltuk [p] "Kemps!" dedi: dörtlüsü yoksa sıradaki koltuk kazanır.
+  bool declareBy(int p) {
     if (over) return false;
     over = true;
-    winner = hasFour(hands[0]) ? 0 : 1;
-    return winner == 0;
+    winner = hasFour(hands[p]) ? p : (p + 1) % players;
+    return winner == p;
+  }
+
+  @override
+  bool act(int p, String a) {
+    if (over || p < 0 || p >= players || a.isEmpty) return false;
+    if (a == 'K') return declareBy(p);
+    if (!a.startsWith('W')) return false;
+    final f = a.substring(1).split(',');
+    if (f.length != 2) return false;
+    final mine = int.tryParse(f[0]), mid = int.tryParse(f[1]);
+    return mine != null && mid != null && swap(p, mine, mid);
+  }
+
+  @override
+  int scoreOf(int p) => hands[p].where((c) => rankOf(c) == bestRank(hands[p])).length;
+  @override
+  int get winnerSeat => winner;
+
+  @override
+  List<int> encode() {
+    final w = RtWriter()
+      ..i(time)
+      ..b(over)
+      ..i(winner)
+      ..i(lastSwapAt)
+      ..i(refreshes);
+    for (var p = 0; p < players; p++) {
+      w
+        ..i(aiNextAt[p])
+        ..i(aiDeclareAt[p])
+        ..l(hands[p]);
+    }
+    w
+      ..l(center)
+      ..l(deck)
+      ..l(discard);
+    return w.out;
+  }
+
+  @override
+  void decode(List<int> v) {
+    final r = RtReader(v);
+    time = r.i();
+    over = r.b();
+    winner = r.i();
+    lastSwapAt = r.i();
+    refreshes = r.i();
+    for (var p = 0; p < players; p++) {
+      aiNextAt[p] = r.i();
+      aiDeclareAt[p] = r.i();
+      r.into(hands[p]);
+    }
+    r
+      ..into(center)
+      ..into(deck)
+      ..into(discard);
+  }
+
+  @override
+  void rotate(int k) {
+    final m = k % players;
+    if (m == 0) return;
+    final h = [for (final x in hands) List.of(x)];
+    final an = List.of(aiNextAt), ad = List.of(aiDeclareAt);
+    for (var i = 0; i < players; i++) {
+      final from = (i + m) % players;
+      hands[i]
+        ..clear()
+        ..addAll(h[from]);
+      aiNextAt[i] = an[from];
+      aiDeclareAt[i] = ad[from];
+    }
+    if (winner >= 0) winner = (winner - m + players) % players;
   }
 
   bool _greedySwap(int p) {
@@ -517,7 +889,8 @@ class KempsGame extends RtGame {
     final end = time + ms;
     while (!over && time < end) {
       time += 10;
-      for (var p = 1; p < 4; p++) {
+      for (var p = 0; p < 4; p++) {
+        if (!ai[p]) continue;
         if (aiDeclareAt[p] >= 0 && time >= aiDeclareAt[p]) {
           over = true;
           winner = p;
@@ -566,6 +939,10 @@ class RealtimeRules extends GameRules<RtLevel> {
   int get levelCount => 100000;
   @override
   List<String> get optionalMechanics => const [];
+
+  /// "Bilgisayara karşı" ve "Çevrimiçi masa": Kemps dört, diğerleri iki kişilik.
+  @override
+  int get localPlayers => kind == RtKind.kemps ? 4 : 2;
   @override
   List<GameModeId> get modes => const [GameModeId.campaign, GameModeId.daily, GameModeId.weekly, GameModeId.challenge];
   @override
@@ -607,4 +984,53 @@ class RealtimeRules extends GameRules<RtLevel> {
     if (!won) return 0;
     return margin >= 10 ? 3 : (margin >= 3 ? 2 : 1);
   }
+}
+
+// ======================================================================
+// Ağ durumu yazımı
+
+/// Tamsayı listesine sırayla yazar (listeler uzunluk önekli).
+class RtWriter {
+  final out = <int>[];
+  void i(int v) => out.add(v);
+  void b(bool v) => out.add(v ? 1 : 0);
+  void l(List<int> v) {
+    out
+      ..add(v.length)
+      ..addAll(v);
+  }
+}
+
+/// [RtWriter] çıktısını okur; eksik veride 0 / boş liste döner.
+class RtReader {
+  final List<int> v;
+  int _p = 0;
+  RtReader(this.v);
+  int i() => _p < v.length ? v[_p++] : 0;
+  bool b() => i() != 0;
+  List<int> l() {
+    final n = i();
+    if (n <= 0 || _p + n > v.length) return <int>[];
+    final r = v.sublist(_p, _p + n);
+    _p += n;
+    return r;
+  }
+
+  void into(List<int> dst) {
+    final x = l();
+    dst
+      ..clear()
+      ..addAll(x);
+  }
+}
+
+/// İki listenin içeriğini değiştir.
+void swapLists(List<int> a, List<int> b) {
+  final t = List.of(a);
+  a
+    ..clear()
+    ..addAll(b);
+  b
+    ..clear()
+    ..addAll(t);
 }
