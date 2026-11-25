@@ -6,7 +6,7 @@ import 'package:studio_core/app/game_api.dart';
 import 'package:studio_core/app/services/audio.dart';
 import 'package:studio_core/core/game_rules.dart';
 import 'package:studio_core/core/net_sync.dart';
-import 'package:studio_core/core/strings.dart';
+import 'package:studio_core/core/net_texts.dart';
 
 import 'card_painter.dart';
 import 'cards.dart';
@@ -41,6 +41,7 @@ class _RealtimeViewState extends State<RealtimeView> {
 
   // ---- çevrimiçi ----
   NetSync? _sync;
+  final NetNotes _notes = NetNotes();
   StreamSubscription<(int, String)>? _sub;
   final Stopwatch _clock = Stopwatch()..start();
   int _me = 0;
@@ -116,6 +117,7 @@ class _RealtimeViewState extends State<RealtimeView> {
 
   void _onlineTick(NetSync s) {
     final now = _now;
+    _notes.update(s, now);
     s.takeDemoted();
     final res = s.takeResume();
     if (res != null && s.isHost) g.decode(decodeInts(res.payload));
@@ -208,7 +210,7 @@ class _RealtimeViewState extends State<RealtimeView> {
     final n = math.max(g.seats, ctx.match?.names.length ?? 0);
     final seat = (i + _me) % n;
     final bot = s == null ? false : (s.isHost ? !s.live(seat, _now) : (s.latest?.isBot(seat) ?? false));
-    return '${bot ? '🤖 ' : ''}${ctx.seatName(seat)}';
+    return netSeatLabel(ctx.lang, ctx.seatName(seat), bot: bot);
   }
 
   void _endOnline(int winner) {
@@ -275,7 +277,7 @@ class _RealtimeViewState extends State<RealtimeView> {
     );
   }
 
-  String get _you => Strings.tx(ctx.lang, 'Sen', 'You');
+  String get _you => netYou(ctx.lang);
   String get _rival => _online ? _nameOf(1) : kt(ctx.lang, 'rival');
 
   @override
@@ -283,13 +285,24 @@ class _RealtimeViewState extends State<RealtimeView> {
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth;
       final cw = math.min(74.0, w / 7);
-      return switch (shown) {
+      final body = switch (shown) {
         SnapGame s => _snap(s, cw),
         SpeedGame s => _speed(s, cw),
         NertzGame s => _nertz(s, math.min(60.0, w / 9)),
         KempsGame s => _kemps(s, cw),
         _ => const SizedBox(),
       };
+      final note = _online ? netNoteText(ctx.lang, _notes.note, _notes.seat >= 0 ? ctx.seatName(_notes.seat) : '') : '';
+      if (note.isEmpty) return body;
+      return Column(children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          color: Theme.of(context).colorScheme.tertiaryContainer,
+          child: Text(note, textAlign: TextAlign.center, maxLines: 2, style: Theme.of(context).textTheme.labelMedium),
+        ),
+        Expanded(child: body),
+      ]);
     });
   }
 
