@@ -130,8 +130,8 @@ void main() {
 
     test('Aşamalı Remi: her elin aşaması farklı', () {
       const r = RummyRules(players: 3, handSize: 10, contract: [false, false]);
-      expect(r.matchFormat!.deals, 4);
-      expect(r.matchFormat!.lowWins, isTrue);
+      expect(r.matchFormat.deals, 4);
+      expect(r.matchFormat.lowWins, isTrue);
       expect((r.rulesForDeal(3) as RummyRules).contract, [false, false, false]);
       expect((r.rulesForDeal(1) as RummyRules).contract, [false, true]);
     });

@@ -23,9 +23,9 @@ import 'trick_view.dart';
 /// mevcut masa ekranında ([TrickHandView] / [TableHandView]) oynanır; puan
 /// tablosu tutulur, dağıtan döner, maç kaydedilip sürdürülebilir.
 ///
-/// Çevrimiçi masada her hamle "d<el>|<hamle>" biçiminde gönderilir; maçın
+/// Çevrimiçi masada her hamle `d<el>|<hamle>` biçiminde gönderilir; maçın
 /// türü ev sahibinin "m:1"/"m:0" mesajıyla, King/Trix sözleşmesi seçenin
-/// "d<el>|k:<seçim>" mesajıyla belirlenir. Böylece maç geçmişten aynen
+/// `d<el>|k:<seçim>` mesajıyla belirlenir. Böylece maç geçmişten aynen
 /// yeniden oynanır.
 class MatchView extends StatefulWidget {
   final PlayContext ctx;
@@ -637,7 +637,7 @@ class _MiniCard extends CustomPainter {
   bool shouldRepaint(covariant _MiniCard o) => o.c != c || o.style != style;
 }
 
-/// Maçın bir elinin ağ bağlantısı: hamleler "d<el>|" önekiyle gider; yalnız
+/// Maçın bir elinin ağ bağlantısı: hamleler `d<el>|` önekiyle gider; yalnız
 /// bu elin hamleleri ekrana iletilir. Elin sonu maçı bitirmez.
 class _DealLink implements MatchLink {
   final MatchLink inner;
