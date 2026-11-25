@@ -402,6 +402,15 @@ class _TrickViewState extends State<TrickHandView> {
             '${bid != null ? '  ·  ${rules.bidLabel(bid, ctx.lang)}' : ''}'
             '${seat != me ? '  ·  🂠${s.hands[seat].length}' : ''}',
             style: const TextStyle(fontSize: 12)),
+        // Açık el (Null Ouvert): kartlar herkese görünür.
+        if (seat != me && rules.openHand(s, seat))
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(spacing: 1, runSpacing: 2, children: [for (final c in s.hands[seat]) _card(c, 18)]),
+            ),
+          ),
       ]),
     );
   }

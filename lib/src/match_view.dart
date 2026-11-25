@@ -218,9 +218,8 @@ class _MatchViewState extends State<MatchView> {
   }
 
   String _caption(String lang) {
-    final f = plan.format;
     final parts = <String>[
-      '${kt(lang, 'deal')} ${m.played + 1}${f.target == 0 && f.deals > 0 ? '/${f.deals}' : ''}',
+      plan.dealName(m, lang),
       if (plan.chooser(m) >= 0 && m.choice >= 0) plan.optionLabel(m.choice, lang),
       '${kt(lang, 'dealer')}: ${_seatName(plan.dealerOf(m))}',
     ];
@@ -330,11 +329,14 @@ class _MatchViewState extends State<MatchView> {
   }
 
   String _formatLine() {
+    final own = plan.formatLabel(lang);
+    if (own != null) return own;
     final f = plan.format;
     if (f.target > 0) {
       return '${kt(lang, 'target')}: ${f.target}${f.lowWins ? '  ·  ${kt(lang, 'least')}' : ''}';
     }
-    return '${f.deals} × ${kt(lang, 'deal')}';
+    if (f.start > 0) return '${kt(lang, 'startPts')}: ${f.start}';
+    return '${f.deals} × ${kt(lang, 'deal')}${f.lowWins ? '  ·  ${kt(lang, 'least')}' : ''}';
   }
 
   // ---- görünüm --------------------------------------------------------------
@@ -423,7 +425,7 @@ class _MatchViewState extends State<MatchView> {
 
   Widget _header(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final t = m.totals(plan.sides);
+    final t = plan.totals(m);
     return Material(
       color: cs.surfaceContainerHigh,
       child: InkWell(
@@ -465,7 +467,7 @@ class _MatchViewState extends State<MatchView> {
 
   Widget _scoreTable(BuildContext context) {
     final sides = plan.sides;
-    final t = m.totals(sides);
+    final t = plan.totals(m);
     final bold = Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800);
     Widget cell(String s, {TextStyle? st, bool left = false}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
@@ -476,11 +478,14 @@ class _MatchViewState extends State<MatchView> {
         cell(kt(lang, 'deal'), st: bold, left: true),
         for (var i = 0; i < sides; i++) cell(_sideName(i), st: bold),
       ]),
+      if (plan.format.start > 0)
+        TableRow(children: [
+          cell(kt(lang, 'startPts'), left: true),
+          for (var i = 0; i < sides; i++) cell('${plan.format.start}'),
+        ]),
       for (var d = 0; d < m.points.length; d++)
         TableRow(children: [
-          cell(
-              '${d + 1}${d < m.choices.length && m.choices[d] >= 0 ? ' · ${plan.optionLabel(m.choices[d], lang)}' : ''}',
-              left: true),
+          cell('${d + 1}${(plan.rowLabel(m, d, lang) ?? '').isEmpty ? '' : ' · ${plan.rowLabel(m, d, lang)}'}', left: true),
           for (var i = 0; i < sides; i++) cell('${i < m.points[d].length ? m.points[d][i] : 0}'),
         ]),
       TableRow(

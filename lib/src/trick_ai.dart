@@ -41,19 +41,26 @@ class TrickAI {
   /// Bilinmeyen kartları diğer koltuklara (ve kapalı kartlara) dağıt.
   TrickState determinize(TrickState s, int seat) {
     final w = s.copy();
-    final known = <KCard>{...s.hands[seat], ...s.played};
+    // Açık eller (Null Ouvert) bilinir, yeniden dağıtılmaz.
+    final hidden = [for (var p = 0; p < s.seats; p++) p != seat && !rules.openHand(s, p)];
+    final known = <KCard>{
+      ...s.hands[seat],
+      ...s.played,
+      for (var p = 0; p < s.seats; p++)
+        if (p != seat && !hidden[p]) ...s.hands[p],
+    };
     final pool = <KCard>[
       for (var p = 0; p < s.seats; p++)
-        if (p != seat) ...s.hands[p],
+        if (hidden[p]) ...s.hands[p],
       ...s.kitty,
     ]..removeWhere(known.contains);
     shuffleCards(pool, r);
     // Önce renk kısıtı olan koltuklara uygun kartları ver.
-    final need = [for (var p = 0; p < s.seats; p++) p == seat ? 0 : s.hands[p].length];
+    final need = [for (var p = 0; p < s.seats; p++) hidden[p] ? s.hands[p].length : 0];
     for (var p = 0; p < s.seats; p++) {
-      if (p != seat) w.hands[p].clear();
+      if (hidden[p]) w.hands[p].clear();
     }
-    final order = [for (var p = 0; p < s.seats; p++) if (p != seat) p]
+    final order = [for (var p = 0; p < s.seats; p++) if (hidden[p]) p]
       ..sort((a, b) => s.voids[b].length.compareTo(s.voids[a].length));
     final rest = <KCard>[];
     for (final c in pool) {

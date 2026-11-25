@@ -2,6 +2,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
 import 'trick_engine.dart';
 import 'trick_rules.dart';
 
@@ -619,10 +620,9 @@ class KingRules extends TrickRules {
 
   static const contracts = 7; // 0 el, 1 kupa, 2 erkek, 3 kız, 4 son iki, 5 rıfkı, 6 koz
 
-  static const _tr = ['El Almaz', 'Kupa Almaz', 'Erkek Almaz', 'Kız Almaz', 'Son İki', 'Rıfkı', 'Koz'];
-  static const _en = ['No Tricks', 'No Hearts', 'No Kings & Jacks', 'No Queens', 'Last Two', 'King of Hearts', 'Trumps'];
-
-  String contractName(int c, String lang) => Strings.tx(lang, _tr[c], _en[c]);
+  /// Sözleşme adı (33 dil): El Almaz, Kupa Almaz, Erkek Almaz, Kız Almaz,
+  /// Son İki, Rıfkı, Koz.
+  String contractName(int c, String lang) => kt(lang, 'kingC${c.clamp(0, contracts - 1)}');
 
   @override
   TrickState deal(List<KCard> shuffled, int dealer) {

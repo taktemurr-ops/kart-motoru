@@ -2,6 +2,9 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
+import 'mahjong.dart';
+import 'rummy.dart' show GinRummyRules;
 import 'table_engine.dart';
 import 'table_rules.dart';
 import 'trick_ai.dart';
@@ -123,8 +126,22 @@ abstract class MatchPlan {
     m.choice = -1;
   }
 
+  /// Taraf toplamları (başlangıç puanı dahil).
+  List<int> totals(MatchState m) => [for (final t in m.totals(sides)) t + format.start];
+
   /// null: maç sürüyor; -1 berabere; yoksa kazanan taraf.
-  int? outcome(MatchState m) => format.outcome(m.totals(sides), m.played);
+  int? outcome(MatchState m) => format.outcome(totals(m), m.played);
+
+  /// Maç biçiminin oyuna özel yazısı (null: hedef ya da el sayısı).
+  String? formatLabel(String lang) => null;
+
+  /// Oynanacak elin adı (ör. Mahjong'da "東2").
+  String dealName(MatchState m, String lang) =>
+      '${kt(lang, 'deal')} ${m.played + 1}${format.target == 0 && format.start == 0 && format.deals > 0 ? '/${format.deals}' : ''}';
+
+  /// Puan tablosunda bir satırın seçim yazısı (King/Trix sözleşmesi, bonus …).
+  String? rowLabel(MatchState m, int row, String lang) =>
+      row < m.choices.length && m.choices[row] >= 0 ? optionLabel(m.choices[row], lang) : null;
 
   List<int> toSides(List<int> seatPoints) =>
       partnerships ? [seatPoints[0], seatPoints[1]] : List.of(seatPoints);
@@ -140,6 +157,8 @@ abstract class MatchPlan {
     if (puzzle is TableLevel) {
       final r = puzzle.rules;
       if (r is TrixLayoutRules) return TrixMatchPlan();
+      if (r is GinRummyRules) return GinMatchPlan(r);
+      if (r is MahjongRules) return MahjongMatchPlan(r);
       return r.matchFormat == null ? null : TableMatchPlan(r);
     }
     return null;
@@ -199,7 +218,10 @@ class TrickMatchPlan extends MatchPlan {
   @override
   MatchFormat get format => base.matchFormat ?? const MatchFormat(deals: 1);
 
-  TrickRules rulesFor(MatchState m) => base.rulesForDeal(m.played);
+  TrickRules rulesFor(MatchState m) => base.rulesForMatch(m.played, m.points);
+
+  @override
+  String? formatLabel(String lang) => base.matchLabel(lang);
 
   TrickState dealState(MatchState m, TrickRules rules) {
     final deck = rules.deck();
@@ -267,7 +289,7 @@ class KingMatchPlan extends TrickMatchPlan {
 
   @override
   String optionLabel(int option, String lang) => option >= 10
-      ? '${Strings.tx(lang, 'Koz', 'Trumps')} ${const ['♠', '♥', '♦', '♣'][option - 10]}'
+      ? '${kt(lang, 'kingC6')} ${const ['♠', '♥', '♦', '♣'][option - 10]}'
       : king.contractName(option, lang);
 
   @override
@@ -424,8 +446,13 @@ class TableMatchPlan extends MatchPlan {
   MatchFormat get format => base.matchFormat ?? const MatchFormat(deals: 1);
 
   @override
+  String? formatLabel(String lang) => base.matchLabel(lang);
+
+  TableRules rulesFor(MatchState m) => base.rulesForMatch(m.played, m.points);
+
+  @override
   Object level(MatchState m, {int difficulty = 4, int samples = 4, String Function(String lang)? caption}) {
-    final rules = base.rulesForDeal(m.played);
+    final rules = rulesFor(m);
     final deck = rules.deck();
     shuffleCards(deck, SeededRandom(dealSeed(m)));
     return TableLevel(rules, rules.deal(deck, dealerOf(m)), _tableGoal(caption), dealSeed(m), difficulty, samples);
@@ -436,4 +463,135 @@ class TableMatchPlan extends MatchPlan {
     final l = level as TableLevel;
     return toSides(l.rules.matchPoints(end as TableState));
   }
+}
+
+/// Gin Remi maçı: 100 puana ilk ulaşan oyunu alır. Oyun bitince bonuslar
+/// yazılır: oyun bonusu 100, kazanılan her el için kutu (çizgi) bonusu 25;
+/// rakip hiç el kazanamadıysa (shutout) kazananın bütün puanı iki katına çıkar.
+class GinMatchPlan extends TableMatchPlan {
+  GinMatchPlan(GinRummyRules super.base);
+
+  /// Puan tablosunda bonus satırının seçim kodu.
+  static const bonusRow = 900;
+
+  static const target = 100, gameBonus = 100, boxBonus = 25;
+
+  bool _bonus(MatchState m, int i) => i < m.choices.length && m.choices[i] == bonusRow;
+
+  /// Yalnız ellerden gelen puanlar (bonussuz).
+  List<int> handTotals(MatchState m) => sumRows([for (var i = 0; i < m.points.length; i++) if (!_bonus(m, i)) m.points[i]], 2);
+
+  /// Kazanılan el (kutu) sayıları.
+  List<int> boxes(MatchState m) => [
+        for (var side = 0; side < 2; side++)
+          [for (var i = 0; i < m.points.length; i++) if (!_bonus(m, i) && m.points[i][side] > 0) i].length,
+      ];
+
+  @override
+  void record(MatchState m, List<int>? sidePoints) {
+    super.record(m, sidePoints);
+    if (sidePoints == null || m.choices.contains(bonusRow)) return;
+    final t = handTotals(m);
+    final w = t[0] >= target ? 0 : (t[1] >= target ? 1 : -1);
+    if (w < 0) return;
+    final b = boxes(m);
+    final bonus = [for (var i = 0; i < 2; i++) boxBonus * b[i]];
+    bonus[w] += gameBonus;
+    if (b[1 - w] == 0) {
+      // Shutout: kazananın el puanı ve bonusları iki katı.
+      bonus[w] = 2 * (t[w] + bonus[w]) - t[w];
+    }
+    m.points.add(bonus);
+    m.choices.add(bonusRow);
+    m.choosers.add(-1);
+  }
+
+  @override
+  int? outcome(MatchState m) {
+    final i = m.choices.indexOf(bonusRow);
+    if (i < 0) return m.played >= 200 ? format.outcome(totals(m), m.played) ?? -1 : null;
+    final t = handTotals(m);
+    return t[0] >= target ? 0 : 1;
+  }
+
+  @override
+  String optionLabel(int option, String lang) => option == bonusRow ? kt(lang, 'ginBonus') : '$option';
+
+  @override
+  String? formatLabel(String lang) => '${kt(lang, 'target')}: $target  ·  ${kt(lang, 'ginBonus')}';
+}
+
+/// Mahjong maçı: rüzgâr turları. Doğu oyuncusu (dağıtan) kazanırsa ya da
+/// el berabere biterse (Hong Kong/klasik) dağıtmayı sürdürür; yoksa doğu
+/// sağdakine geçer. Herkes bir kez dağıtınca tur rüzgârı ilerler. Riichi ve
+/// Sanma: Doğu + Güney turları (hanchan), herkes 25.000 puanla başlar, eksiye
+/// düşen olursa maç biter. Klasik ve Hong Kong: dört rüzgâr turu.
+class MahjongMatchPlan extends TableMatchPlan {
+  MahjongMatchPlan(MahjongRules super.base);
+
+  MahjongRules get mj => base as MahjongRules;
+
+  /// Oynanacak rüzgâr turu sayısı.
+  int get rounds => mj.riichiLike ? 2 : 4;
+
+  static const winds = ['東', '南', '西', '北'];
+
+  static int _winner(List<int> row) {
+    var best = -1;
+    for (var i = 0; i < row.length; i++) {
+      if (row[i] > 0 && (best < 0 || row[i] > row[best])) best = i;
+    }
+    return best;
+  }
+
+  /// (doğunun kaç kez el değiştirdiği, art arda dağıtma sayısı)
+  (int, int) progress(MatchState m) {
+    var passes = 0, repeats = 0;
+    for (final row in m.points) {
+      final dealer = (m.startDealer + passes) % seats;
+      final w = _winner(row);
+      if (w == dealer || (w < 0 && !mj.riichiLike)) {
+        repeats++;
+      } else {
+        passes++;
+        repeats = 0;
+      }
+    }
+    return (passes, repeats);
+  }
+
+  int round(MatchState m) => progress(m).$1 ~/ seats;
+
+  @override
+  int dealerOf(MatchState m) => (m.startDealer + progress(m).$1) % seats;
+
+  @override
+  Object level(MatchState m, {int difficulty = 4, int samples = 4, String Function(String lang)? caption}) {
+    final rules = MahjongRules(mj.style, round(m).clamp(0, 3));
+    final deck = rules.deck();
+    shuffleCards(deck, SeededRandom(dealSeed(m)));
+    return TableLevel(rules, rules.deal(deck, dealerOf(m)), _tableGoal(caption), dealSeed(m), difficulty, samples);
+  }
+
+  @override
+  int? outcome(MatchState m) {
+    final t = totals(m);
+    final done = round(m) >= rounds || m.played >= seats * rounds * 4 || (mj.riichiLike && t.any((x) => x < 0));
+    if (!done) return null;
+    var best = 0;
+    for (var i = 1; i < t.length; i++) {
+      if (t[i] > t[best]) best = i;
+    }
+    return t.where((x) => x == t[best]).length > 1 ? -1 : best;
+  }
+
+  @override
+  String dealName(MatchState m, String lang) {
+    final (passes, repeats) = progress(m);
+    return '${winds[(passes ~/ seats).clamp(0, 3)]}${passes % seats + 1}${repeats > 0 ? ' +$repeats' : ''}';
+  }
+
+  @override
+  String? formatLabel(String lang) =>
+      mj.riichiLike ? '${kt(lang, 'hanchan')}  ·  ${kt(lang, 'startPts')}: ${format.start}' : kt(lang, 'fourWinds');
 }

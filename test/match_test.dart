@@ -59,8 +59,8 @@ void main() {
       expect(batak.modes, contains(GameModeId.endless));
       expect(batak.strings['mode_endless']![0], 'Maç');
       expect(batak.strings['mode_endless']!.length, 33);
-      final durak = TableGameRules(gameId: 'oyun-durak', rulesFor: (_) => const DurakRules());
-      expect(durak.modes, isNot(contains(GameModeId.endless)));
+      final war = TableGameRules(gameId: 'oyun-savas', rulesFor: (_) => const WarRules());
+      expect(war.modes, isNot(contains(GameModeId.endless)));
       expect(TrixGameRules(gameId: 'oyun-trix').modes, contains(GameModeId.endless));
       final pisti = TableGameRules(gameId: 'oyun-pisti', rulesFor: (_) => const PistiRules());
       final planner = LevelPlanner(gameId: 'oyun-pisti', optionalMechanics: const []);
@@ -81,7 +81,6 @@ void main() {
       'spades': TrickMatchPlan(const SpadesRules()),
       'pisti': TableMatchPlan(const PistiRules()),
       'scopa': TableMatchPlan(const ScopaRules()),
-      'gin': TableMatchPlan(const GinRummyRules()),
     };
     games.forEach((name, plan) {
       test('$name: maç yapay zekâyla sonuna kadar oynanır, puan tablosu tutar', () {

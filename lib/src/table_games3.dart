@@ -2,6 +2,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
 import 'table_engine.dart';
 import 'table_games2.dart' show rankName;
 
@@ -69,10 +70,32 @@ int cribHandScore(List<KCard> hand, KCard starter, {bool crib = false}) {
 /// çiftler ve seriler puan getirir. En sonda eller (ve dağıtanın krib'i)
 /// açılan kartla birlikte sayılır. Çok puan toplayan kazanır.
 class CribbageRules extends TableRules {
-  const CribbageRules();
+  /// Maçta ele girerken toplam puanlar: biri oyun sırasında (sayma ya da
+  /// el sayımı) 121'e ulaşınca oyun o anda biter.
+  final List<int> carry;
+  const CribbageRules({this.carry = const [0, 0]});
+
+  static const goal = 121;
 
   @override
-  MatchFormat get matchFormat => const MatchFormat(target: 121);
+  MatchFormat get matchFormat => const MatchFormat(target: goal);
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) => CribbageRules(carry: sumRows(history, 2));
+
+  bool get _inMatch => carry[0] > 0 || carry[1] > 0;
+
+  /// Puan yaz; maçta 121'e ulaşan olursa el (ve oyun) hemen biter.
+  bool _peg(TableState s, int p, int pts) {
+    if (pts <= 0) return false;
+    s.scores[p] += pts;
+    if (_inMatch && carry[p] + s.scores[p] >= goal) {
+      s.vars[0] = 2;
+      s.over = true;
+      return true;
+    }
+    return false;
+  }
 
   // piles: 0 deste, 1 krib (kapalı), 2 açılan kart, 3 sayı dizisi, 4 oynananlar, 5/6 gösterilecek eller
   // vars: 0 aşama (0 krib, 1 sayma, 2 bitti), 1 toplam, 2 son kart atan, 3 dağıtan, 4 "go" sayısı
@@ -173,8 +196,8 @@ class CribbageRules extends TableRules {
       if (s.piles[1].length == 4) {
         final st = s.piles[0].removeLast();
         s.piles[2].add(st);
-        if (rankOf(st) == 11) s.scores[dealer(s)] += 2;
         s.vars[0] = 1;
+        if (rankOf(st) == 11 && _peg(s, dealer(s), 2)) return;
         s.turn = 1 - dealer(s);
       } else {
         s.turn = 1 - p;
@@ -186,7 +209,7 @@ class CribbageRules extends TableRules {
       s.vars[4]++;
       final o = 1 - p;
       if (!_canPlay(s, o)) {
-        if (s.vars[1] != 31 && s.vars[2] >= 0) s.scores[s.vars[2]] += 1;
+        if (s.vars[1] != 31 && s.vars[2] >= 0 && _peg(s, s.vars[2], 1)) return;
         _resetCount(s);
         s.turn = s.hands[p].isNotEmpty ? p : o;
       } else {
@@ -200,7 +223,7 @@ class CribbageRules extends TableRules {
       s.piles[5 + p].add(c);
       s.vars[1] += cribValue(c);
       s.vars[2] = p;
-      s.scores[p] += _pegPoints(s.piles[3], s.vars[1]);
+      if (_peg(s, p, _pegPoints(s.piles[3], s.vars[1]))) return;
       if (s.vars[1] == 31) {
         _resetCount(s);
         s.turn = s.hands[1 - p].isNotEmpty ? 1 - p : p;
@@ -209,7 +232,7 @@ class CribbageRules extends TableRules {
       }
     }
     if (s.hands.every((h) => h.isEmpty)) {
-      if (s.vars[1] > 0 && s.vars[1] != 31) s.scores[s.vars[2]] += 1;
+      if (s.vars[1] > 0 && s.vars[1] != 31 && _peg(s, s.vars[2], 1)) return;
       _show(s);
     }
   }
@@ -223,10 +246,10 @@ class CribbageRules extends TableRules {
   void _show(TableState s) {
     final st = s.piles[2].first;
     final d = dealer(s);
-    for (var p = 0; p < 2; p++) {
-      s.scores[p] += cribHandScore(s.piles[5 + p], st);
-    }
-    s.scores[d] += cribHandScore(s.piles[1], st, crib: true);
+    // Sayım sırası: önce dağıtmayan, sonra dağıtan, en son krib.
+    if (_peg(s, 1 - d, cribHandScore(s.piles[6 - d], st))) return;
+    if (_peg(s, d, cribHandScore(s.piles[5 + d], st))) return;
+    _peg(s, d, cribHandScore(s.piles[1], st, crib: true));
     s.vars[0] = 2;
     s.over = true;
   }
@@ -291,7 +314,28 @@ class CribbageRules extends TableRules {
 /// veya kartları alır. Saldıran masadaki sayılardan kart ekleyebilir. Deste
 /// bitince elini ilk bitiren kazanır; kartları elinde kalan "durak"tır.
 class DurakRules extends TableRules {
-  const DurakRules();
+  /// Maçta önceki oyunu kazanan ilk saldırır (durak dağıtır); -1: en küçük koz.
+  final int firstAttacker;
+  const DurakRules({this.firstAttacker = -1});
+
+  /// Maç: her oyunda "durak" kalan bir çizgi yer; beş kez durak kalan maçı
+  /// kaybeder (en az çizgisi olan kazanır).
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 5, lowWins: true);
+
+  @override
+  List<int> matchPoints(TableState s) => [for (final x in s.scores) x < 0 ? 1 : 0];
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) {
+    if (history.isEmpty) return this;
+    final r = history.last;
+    final loser = r[0] > r[1] ? 0 : (r[1] > r[0] ? 1 : -1);
+    return DurakRules(firstAttacker: loser < 0 ? -1 : 1 - loser);
+  }
+
+  @override
+  String? matchLabel(String lang) => kt(lang, 'durakMatch');
 
   @override
   List<KCard> deck() => buildDeck(ranks: const [1, 6, 7, 8, 9, 10, 11, 12, 13]);
@@ -349,6 +393,7 @@ class DurakRules extends TableRules {
         }
       }
     }
+    if (firstAttacker == 0 || firstAttacker == 1) att = firstAttacker;
     s.vars[0] = att;
     s.turn = att;
     for (final h in hands) {

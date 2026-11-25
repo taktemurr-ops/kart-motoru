@@ -347,7 +347,35 @@ class OkeyRules extends TableRules {
   /// Katlamalı: çiftle ya da okey atarak bitirmek puanı ikiye katlar
   /// (ikisi birden dört kat); göstergeyi elinde tutan başta 1 puan alır.
   final bool doubling;
-  const OkeyRules({this.players = 4, this.partners = false, this.doubling = false});
+
+  /// Göstergenin eşini elinde tutan gösterir: diğerleri 1 puan kaybeder
+  /// (maçta her zaman; Katlamalı'da bölümde de).
+  final bool showIndicator;
+  const OkeyRules({this.players = 4, this.partners = false, this.doubling = false, this.showIndicator = false});
+
+  /// Maç: herkes 20 puanla başlar. Biri bitirince diğerleri 2 (okey atarak
+  /// ya da çiftle 4) puan kaybeder; göstergeyi gösteren için diğerleri 1
+  /// kaybeder. Puanı sıfıra inen olunca maç biter, en yüksek kazanır.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(start: 20);
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) =>
+      OkeyRules(players: players, partners: partners, doubling: doubling, showIndicator: true);
+
+  /// Elin kazandırdığı puanlar diğerlerinden düşülür (eşli oyunda karşı taraftan).
+  @override
+  List<int> matchPoints(TableState s) {
+    final sc = s.scores;
+    if (partners) {
+      return [for (var p = 0; p < seats; p++) -sc[(p + 1) % seats]];
+    }
+    final sum = sc.fold<int>(0, (a, b) => a + b);
+    return [for (var p = 0; p < seats; p++) -(sum - sc[p])];
+  }
+
+  @override
+  String? matchLabel(String lang) => '${kt(lang, 'startPts')}: 20  ·  ${kt(lang, 'okeyDown')}';
 
   @override
   int get seats => players;
@@ -396,7 +424,7 @@ class OkeyRules extends TableRules {
     for (final h in hands) {
       _sort(s, h);
     }
-    if (doubling) {
+    if (doubling || showIndicator) {
       // Göstergenin eşini elinde tutan 1 puan alır.
       for (var p = 0; p < seats; p++) {
         if (hands[p].any((t) => t != ind && !isOkeyFalseJoker(t) && t % 52 == ind % 52)) _award(s, p, 1);
@@ -565,6 +593,32 @@ class OkeyRules extends TableRules {
 /// vars: 0 aşama, 1 okey türü, 2 açanlar (bit), 3 çiftle açanlar (bit).
 class Okey101Rules extends OkeyRules {
   const Okey101Rules({super.players = 4, super.partners = false});
+
+  /// Maç: önceden belirlenen sayıda el (9) oynanır; ceza puanları toplanır,
+  /// en az cezası olan kazanır.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 9, lowWins: true);
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) => this;
+
+  /// Elin ceza puanları. Deste biter de kimse bitiremezse el sayılmaz;
+  /// yalnız elinde okey (joker) tutan, her biri için 101 ceza yazar.
+  @override
+  List<int> matchPoints(TableState s) {
+    final finished = s.hands.any((h) => h.isEmpty);
+    final pen = <int>[
+      for (var p = 0; p < seats; p++)
+        finished ? -s.scores[p] : 101 * s.hands[p].where((t) => okeyMeaning(t, kind(s)) < 0).length,
+    ];
+    if (partners && !finished) {
+      return [for (var p = 0; p < seats; p++) pen[p] + pen[(p + 2) % seats]];
+    }
+    return pen;
+  }
+
+  @override
+  String? matchLabel(String lang) => '9 × ${kt(lang, 'deal')}  ·  ${kt(lang, 'least')}';
 
   static const _labelsMelds = [
     'Masa', 'Table', 'Tisch', 'Mesa', 'Table', 'الطاولة', 'میز', 'שולחן', 'میز', 'Стол', 'Стіл', 'Stół', 'Stůl', 'Masă', 'Asztal', 'Τραπέζι', 'Tavolo', 'Mesa', 'Tafel', 'Bord', 'Bord', 'Bord', 'Pöytä', '場', '테이블', '桌面', 'मेज़', 'টেবিল', 'Meja', 'Meja', 'โต๊ะ', 'Bàn', 'Mesa',

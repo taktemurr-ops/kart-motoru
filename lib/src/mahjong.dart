@@ -180,7 +180,61 @@ bool mjSevenPairs(List<int> counts) {
 /// 8 kendi çekişiyle mi kazandı.
 class MahjongRules extends TableRules {
   final MahjongStyle style;
-  const MahjongRules([this.style = MahjongStyle.classic]);
+
+  /// Tur rüzgârı (0 doğu, 1 güney, 2 batı, 3 kuzey): o rüzgârın üçlüsü bir
+  /// puan daha getirir. Maçta turlarla ilerler.
+  final int roundWind;
+  const MahjongRules([this.style = MahjongStyle.classic, this.roundWind = 0]);
+
+  /// Maç: Riichi/Sanma Doğu + Güney turu (25.000 puanla başlanır); klasik ve
+  /// Hong Kong dört rüzgâr turu. Sonuç [MahjongMatchPlan]'da hesaplanır.
+  @override
+  MatchFormat get matchFormat => riichiLike ? MatchFormat(start: 25000, deals: seats * 2) : MatchFormat(deals: seats * 4);
+
+  /// Hong Kong "yarı acı" ödeme çizelgesi (fan başına, ödeyen başına).
+  static const hkPay = [1, 2, 4, 8, 16, 24, 32, 48, 64, 96, 128];
+
+  /// Riichi: han → ron değeri (çocuk / doğu).
+  static int riichiPay(int han, {required bool dealer}) {
+    const child = [1000, 2000, 3900, 7700, 8000, 12000, 12000, 16000, 16000, 16000, 24000, 24000, 32000];
+    const east = [1500, 2900, 5800, 11600, 12000, 18000, 18000, 24000, 24000, 24000, 36000, 36000, 48000];
+    final i = (han - 1).clamp(0, 12);
+    return dealer ? east[i] : child[i];
+  }
+
+  /// Elin maç puanları: Riichi'de gerçek puan değerleri, Hong Kong'da fan
+  /// çizelgesi; atan (ron) bütün değeri öder, kendi çekişte herkes payını öder.
+  @override
+  List<int> matchPoints(TableState s) {
+    final w = s.vars[5] - 1;
+    if (w < 0 || style == MahjongStyle.classic) return List.of(s.scores);
+    final han = s.scores[w] ~/ (seats - 1);
+    final tsumo = s.vars[8] == 1;
+    final int total;
+    if (style == MahjongStyle.hongKong) {
+      total = hkPay[han.clamp(0, 10)] * (seats - 1);
+    } else {
+      total = riichiPay(han, dealer: seatWind(s, w) == 0);
+    }
+    final out = List<int>.filled(seats, 0);
+    if (tsumo) {
+      final each = ((total / (seats - 1)) / 100).ceil() * 100;
+      final per = style == MahjongStyle.hongKong ? total ~/ (seats - 1) : each;
+      for (var p = 0; p < seats; p++) {
+        if (p != w) out[p] = -per;
+      }
+      out[w] = per * (seats - 1);
+    } else {
+      var from = -1;
+      for (var p = 0; p < seats; p++) {
+        if (p != w && s.scores[p] < 0) from = p;
+      }
+      if (from < 0) return List.of(s.scores);
+      out[from] = -total;
+      out[w] = total;
+    }
+    return out;
+  }
 
   bool get riichiLike => style == MahjongStyle.riichi || style == MahjongStyle.sanma;
   bool get flowers => style == MahjongStyle.hongKong;
@@ -305,7 +359,7 @@ class MahjongRules extends TableRules {
       if (all[k] >= 3) dragons++;
     }
     final sw = all[27 + seatWind(s, p)] >= 3 ? 1 : 0;
-    final pw = all[27] >= 3 ? 1 : 0;
+    final pw = all[27 + roundWind.clamp(0, 3)] >= 3 ? 1 : 0;
     final closed = concealed(s, p);
     final simples = [for (var k = 0; k < 34; k++) if (all[k] > 0) k].every((k) => !mjTerminalOrHonor(k));
     switch (style) {
@@ -646,6 +700,6 @@ class MahjongRules extends TableRules {
   String status(TableState s, String lang) {
     final sw = _windGlyph[seatWind(s, 0)];
     final dora = riichiLike ? '  ·  Dora ${s.vars[3] < 27 ? '${s.vars[3] % 9 + 1}' : '★'}' : '';
-    return '$sw$dora  ·  🀫 ${s.piles[0].length}';
+    return '${_windGlyph[roundWind.clamp(0, 3)]}/$sw$dora  ·  🀫 ${s.piles[0].length}';
   }
 }

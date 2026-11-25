@@ -2,6 +2,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
 import 'table_engine.dart';
 import 'table_view.dart' show cardsLabel;
 
@@ -24,7 +25,35 @@ int _nextActive(TableState s, int from, bool Function(int) active) {
 /// ya da pas der. Herkes pas derse son atan yeni tura başlar. İlk biten başkan.
 /// Güç sırası: 3 en küçük, 2 en büyük.
 class PresidentRules extends TableRules {
-  const PresidentRules();
+  /// Maçta önceki elin sıraları (3 başkan, 2 yardımcı, 1 halk, 0 son);
+  /// verilirse dağıtımdan sonra kart değişimi yapılır.
+  final List<int>? ranks;
+  const PresidentRules({this.ranks});
+
+  /// Maç: başkan 3, yardımcı 2, halk 1, sonuncu 0 puan; 21 puana ilk ulaşan
+  /// kazanır. Her elden sonra sonuncu en iyi iki kartını başkana, sondan
+  /// ikinci en iyi kartını yardımcıya verir; karşılığında en küçükleri alır.
+  /// Yeni eli sonuncu açar.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 21);
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) =>
+      history.isEmpty ? this : PresidentRules(ranks: List.of(history.last));
+
+  void _swap(List<List<KCard>> hands, int from, int to, int n) {
+    final f = hands[from], t = hands[to];
+    _sortByRank(f, power);
+    _sortByRank(t, power);
+    final best = f.sublist(f.length - n);
+    final low = t.sublist(0, n);
+    f
+      ..removeRange(f.length - n, f.length)
+      ..addAll(low);
+    t
+      ..removeRange(0, n)
+      ..addAll(best);
+  }
 
   @override
   int get seats => 4;
@@ -48,10 +77,17 @@ class PresidentRules extends TableRules {
     for (var i = 0; i < shuffled.length; i++) {
       hands[i % 4].add(shuffled[i]);
     }
+    final rk = ranks;
+    var start = -1;
+    if (rk != null && rk.length == 4 && {...rk}.length == 4) {
+      _swap(hands, rk.indexOf(0), rk.indexOf(3), 2);
+      _swap(hands, rk.indexOf(1), rk.indexOf(2), 1);
+      start = rk.indexOf(0);
+    }
     for (final h in hands) {
       _sortByRank(h, power);
     }
-    final start = hands.indexWhere((h) => h.contains(makeCard(3, kClubs)));
+    if (start < 0) start = hands.indexWhere((h) => h.contains(makeCard(3, kClubs)));
     final s = TableState(seats: 4, hands: hands, piles: [[], []], turn: start);
     s.vars[1] = -1;
     for (var p = 0; p < 4; p++) {
@@ -523,6 +559,29 @@ class CheatRules extends TableRules {
 /// "Kapat" dersen herkes son bir kez oynar; en yüksek el kazanır.
 class ThirtyOneRules extends TableRules {
   const ThirtyOneRules();
+
+  /// Maç: herkesin üç canı var. Her elde en düşük el bir can kaybeder (kapatan
+  /// en düşükse iki); 31 yapan olursa diğer herkes bir can kaybeder. Üç canını
+  /// ilk bitiren olunca maç biter; en az can kaybeden kazanır.
+  static const lives = 3;
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: lives, lowWins: true);
+
+  @override
+  List<int> matchPoints(TableState s) {
+    final v = finalScores(s);
+    if (v.contains(31)) return [for (final x in v) x == 31 ? 0 : 1];
+    final low = v.reduce((a, b) => a < b ? a : b);
+    final knocker = s.vars[1];
+    if (knocker >= 0 && v[knocker] == low) {
+      return [for (var p = 0; p < seats; p++) p == knocker ? 2 : 0];
+    }
+    return [for (final x in v) x == low ? 1 : 0];
+  }
+
+  @override
+  String? matchLabel(String lang) => '$lives ${kt(lang, 'lives')}  ·  ${kt(lang, 'least')}';
 
   @override
   int get seats => 3;

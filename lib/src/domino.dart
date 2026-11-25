@@ -15,7 +15,19 @@ import 'tile_painter.dart';
 /// vars: 0 sol uç, 1 sağ uç, 2 art arda pas.
 class DominoRules extends TableRules {
   final int players;
-  const DominoRules([this.players = 2]);
+
+  /// Maçta önceki eli kazanan: yeni eli istediği taşla açar (-1: en büyük çift).
+  final int opener;
+  const DominoRules([this.players = 2, this.opener = -1]);
+
+  /// Maç: iki kişide 100, üç-dört kişide 150 puana ilk ulaşan kazanır.
+  int get matchTarget => players == 2 ? 100 : 150;
+
+  @override
+  MatchFormat get matchFormat => MatchFormat(target: matchTarget);
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) => DominoRules(players, lastRowWinner(history));
 
   @override
   int get seats => players;
@@ -64,6 +76,7 @@ class DominoRules extends TableRules {
         }
       }
     }
+    if (opener >= 0 && opener < seats) starter = opener;
     final s = TableState(seats: seats, hands: hands, piles: [deck, []], turn: starter);
     s.vars[0] = s.vars[1] = -1;
     return s;

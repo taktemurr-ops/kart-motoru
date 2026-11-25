@@ -300,6 +300,9 @@ abstract class TrickRules {
   bool get avoidTricks => false;
   bool avoidIn(TrickState s) => avoidTricks;
 
+  /// Koltuğun eli herkese açık mı (ör. Skat'ta Null Ouvert).
+  bool openHand(TrickState s, int seat) => false;
+
   /// Kartın puan değeri (puanlı oyunlarda; yoksa 0).
   int cardPoints(KCard c) => 0;
 
@@ -324,6 +327,13 @@ abstract class TrickRules {
   /// Maçın [deal]. eli için kurallar (ör. Oh Hell'de el büyüklüğü değişir).
   TrickRules rulesForDeal(int deal) => this;
 
+  /// Maçın [deal]. eli için kurallar; [history] o ana kadar sayılan ellerin
+  /// taraf puanları (ör. Briç Chicago'da zon, önceki elin kazananı).
+  TrickRules rulesForMatch(int deal, List<List<int>> history) => rulesForDeal(deal);
+
+  /// Maç biçiminin oyuna özel kısa yazısı (null: hedef/el sayısı gösterilir).
+  String? matchLabel(String lang) => null;
+
   /// El oynanmadan bitti mi (herkes pas: yeniden dağıtılır).
   bool thrownIn(TrickState s) => s.phase == TrickPhase.over && s.played.isEmpty;
 }
@@ -342,25 +352,54 @@ class MatchFormat {
   /// Bu kadar eksiye düşen taraf maçı kaybeder (29: −6).
   final int loseAt;
 
-  const MatchFormat({this.target = 0, this.deals = 0, this.lowWins = false, this.loseAt = 0});
+  /// Başlangıç puanı (Okey: 20). Verilirse toplamlar bu puandan başlar ve
+  /// biri sıfıra (ya da altına) düşünce maç biter; en yüksek kazanır.
+  final int start;
 
-  /// Toplamlara göre sonuç: null sürüyor, -1 berabere, yoksa kazanan taraf.
+  const MatchFormat({this.target = 0, this.deals = 0, this.lowWins = false, this.loseAt = 0, this.start = 0});
+
+  /// Toplamlara göre sonuç ([start] dahil): null sürüyor, -1 berabere, yoksa
+  /// kazanan taraf.
   int? outcome(List<int> totals, int played) {
     final n = totals.length;
     if (loseAt > 0 && n == 2) {
       final down = [for (var i = 0; i < n; i++) totals[i] <= -loseAt];
       if (down[0] != down[1]) return down[0] ? 1 : 0;
     }
-    final reached = target > 0 && totals.any((t) => t >= target);
-    final cap = deals > 0 ? deals : (target > 0 ? 200 : 0);
-    final done = target > 0 ? (reached || played >= cap) : (deals > 0 && played >= deals);
+    final open = target > 0 || start > 0;
+    final reached = (target > 0 && totals.any((t) => t >= target)) || (start > 0 && totals.any((t) => t <= 0));
+    final cap = deals > 0 ? deals : (open ? 200 : 0);
+    final done = open ? (reached || played >= cap) : (deals > 0 && played >= deals);
     if (!done) return null;
     var best = 0;
     for (var i = 1; i < n; i++) {
       if (lowWins ? totals[i] < totals[best] : totals[i] > totals[best]) best = i;
     }
     final ties = [for (var i = 0; i < n; i++) if (totals[i] == totals[best]) i].length;
-    if (ties > 1) return target > 0 && played < cap ? null : -1;
+    if (ties > 1) return open && played < cap ? null : -1;
     return best;
   }
+}
+
+/// Maç geçmişindeki satırların sütun toplamları.
+List<int> sumRows(List<List<int>> rows, int n) {
+  final t = List<int>.filled(n, 0);
+  for (final r in rows) {
+    for (var i = 0; i < n && i < r.length; i++) {
+      t[i] += r[i];
+    }
+  }
+  return t;
+}
+
+/// Maç geçmişinin son satırında en çok puan alan (tek) taraf; yoksa -1.
+int lastRowWinner(List<List<int>> rows) {
+  if (rows.isEmpty) return -1;
+  final r = rows.last;
+  var best = -1;
+  for (var i = 0; i < r.length; i++) {
+    if (r[i] > 0 && (best < 0 || r[i] > r[best])) best = i;
+  }
+  if (best >= 0 && r.where((x) => x == r[best]).length > 1) return -1;
+  return best;
 }

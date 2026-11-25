@@ -5,7 +5,7 @@ import 'package:studio_core/core/rng.dart';
 import 'cards.dart';
 import 'trick_engine.dart' show MatchFormat;
 
-export 'trick_engine.dart' show MatchFormat;
+export 'trick_engine.dart' show MatchFormat, sumRows, lastRowWinner;
 
 /// Sıra tabanlı "masa" oyunları (Pişti, Scopa, Renk Eşle, Durak, Başkan,
 /// Papaz Kaçtı, Balık Tut, Blöf, 31 …) için ortak durum ve kurallar.
@@ -188,4 +188,11 @@ abstract class TableRules {
 
   /// Maçın [deal]. eli için kurallar (ör. Aşamalı Remi'de el başına aşama).
   TableRules rulesForDeal(int deal) => this;
+
+  /// Maçın [deal]. eli için kurallar; [history] o ana kadar sayılan ellerin
+  /// taraf puanları (ör. Cribbage'da toplam puan, önceki elin kazananı).
+  TableRules rulesForMatch(int deal, List<List<int>> history) => rulesForDeal(deal);
+
+  /// Maç biçiminin oyuna özel kısa yazısı (null: hedef/el sayısı gösterilir).
+  String? matchLabel(String lang) => null;
 }
