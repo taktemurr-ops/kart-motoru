@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kart_motoru/kart_motoru.dart';
 import 'package:studio_core/core/level_plan.dart';
+import 'package:studio_core/core/rng.dart';
 
 /// Maç modu II: Skat oyun değeri, Briç Chicago, Gin bonusları, Cribbage'da
 /// oyun içinde 121, King sözleşme adları; 31, Durak, Başkan, Okey, 101 Okey,
@@ -20,11 +21,94 @@ void main() {
       expect(SkatRules.matadors([c(7, kHearts)], 2), 10);
     });
 
-    test('ihale sırası en küçük oyun değerine göre (18, 20, 22, 23, 24 …)', () {
-      expect([for (final b in SkatRules.bidCodes) SkatRules.bidValue(b)], [18, 20, 22, 23, 24, 27, 30, 33, 35, 36, 46, 48, 59, 72]);
+    test('ihale değerleri: 18, 20, 22, 23, 24, 27, 30 … 264', () {
+      expect(SkatRules.bidValues.take(20).toList(), [18, 20, 22, 23, 24, 27, 30, 33, 35, 36, 40, 44, 45, 46, 48, 50, 54, 55, 59, 60]);
+      expect(SkatRules.bidValues.last, 264);
+      expect(SkatRules.nextBid(23), 24);
+    });
+
+    test('Reizen: orta el öndekine söyler, sonra arka el; kazanan ilan eder', () {
       final s = r.deal(r.deck(), 0);
-      s.bids[1] = 5;
-      expect(r.legalBids(s, 2), [0, 11, 12, 13, 14, 15, 24, 6, 34, 16]);
+      // Dağıtan 0: öndeki (Vorhand) 1, orta (Mittelhand) 2, arka (Hinterhand) 0.
+      expect(s.turn, 2);
+      expect(r.legalBids(s, 2), [0, 18, 20, 22, 23, 24, 27]);
+      r.applyBid(s, 2, 18);
+      expect(s.turn, 1);
+      expect(r.legalBids(s, 1), [SkatRules.hold, SkatRules.pass]);
+      r.applyBid(s, 1, SkatRules.hold);
+      expect(s.turn, 2);
+      r.applyBid(s, 2, 20);
+      r.applyBid(s, 1, SkatRules.pass);
+      // Orta el kazandı; arka el ona söyler.
+      expect(s.turn, 0);
+      expect(r.legalBids(s, 0).take(3).toList(), [0, 22, 23]);
+      r.applyBid(s, 0, 22);
+      expect(s.turn, 2);
+      r.applyBid(s, 2, SkatRules.hold);
+      r.applyBid(s, 0, SkatRules.pass);
+      expect(s.declarer, 2);
+      expect(SkatRules.bidOf(s), 22);
+      expect(r.legalBids(s, 2), [SkatRules.pickUp, SkatRules.playHand]);
+      // Skatı al, iki kart göm, ♣ ilan et.
+      r.applyBid(s, 2, SkatRules.pickUp);
+      expect(s.hands[2].length, 12);
+      for (var i = 0; i < 2; i++) {
+        r.applyBid(s, 2, r.legalBids(s, 2).first);
+      }
+      expect(s.hands[2].length, 10);
+      final opts = r.legalBids(s, 2);
+      expect(opts, contains(SkatRules.declareBase + 5));
+      // Skat alındığında ilan ve Ouvert (Null dışında) yok; Null 23 < 22 değil.
+      expect(opts.where((o) => (o - SkatRules.declareBase) ~/ 10 != 0 && (o - SkatRules.declareBase) % 10 != SkatRules.nullGame), isEmpty);
+      r.applyBid(s, 2, SkatRules.declareBase + 5);
+      expect(r.biddingOver(s), isTrue);
+      r.finishBidding(s);
+      expect((s.contract, s.declarer, s.taken[2].length, s.turn), (5, 2, 2, 1));
+      expect(s.phase, TrickPhase.play);
+    });
+
+    test('herkes pas: öndeki 18 der ya da Ramsch', () {
+      final s = r.deal(r.deck(), 0);
+      r.applyBid(s, 2, SkatRules.pass);
+      r.applyBid(s, 0, SkatRules.pass);
+      expect(s.turn, 1);
+      expect(r.legalBids(s, 1), [0, 18]);
+      r.applyBid(s, 1, SkatRules.pass);
+      expect(r.biddingOver(s), isTrue);
+      r.finishBidding(s);
+      expect(s.contract, SkatRules.ramsch);
+    });
+
+    test('Hand: Schneider/Schwarz ilanı ve Grand Ouvert', () {
+      final s = r.deal(r.deck(), 0);
+      r.applyBid(s, 2, SkatRules.pass);
+      r.applyBid(s, 0, SkatRules.pass);
+      r.applyBid(s, 1, 18);
+      final kitty = List.of(s.kitty);
+      r.applyBid(s, 1, SkatRules.playHand);
+      final opts = r.legalBids(s, 1);
+      const go = SkatRules.declareBase + SkatRules.grand + 10 * (SkatRules.hand | SkatRules.ouvert | SkatRules.schneiderAnnounced | SkatRules.schwarzAnnounced);
+      expect(opts, contains(go));
+      expect(opts, contains(SkatRules.declareBase + 5 + 10 * (SkatRules.hand | SkatRules.schneiderAnnounced)));
+      expect(r.bidLabel(go, 'en').startsWith('Grand Ouvert'), isTrue);
+      r.applyBid(s, 1, go);
+      r.finishBidding(s);
+      expect(s.taken[1], kitty);
+      expect(r.openHand(s, 1), isTrue);
+      expect(r.openHand(s, 0), isFalse);
+      expect(SkatRules.normalizeFlags(5, SkatRules.ouvert), SkatRules.hand | SkatRules.ouvert | SkatRules.schneiderAnnounced | SkatRules.schwarzAnnounced);
+      expect(SkatRules.normalizeFlags(5, SkatRules.schneiderAnnounced), 0);
+    });
+
+    test('yapay zekâ en yüksek oyun değerine kadar ihale eder', () {
+      final strong = [
+        for (final su in [kClubs, kSpades, kHearts, kDiamonds]) c(11, su),
+        c(1, kClubs), c(10, kClubs), c(13, kClubs), c(1, kHearts), c(10, kHearts), c(1, kSpades),
+      ];
+      // Dört vale ile ♣: 12 × (4 + 1) = 60; Grand: 24 × 5 = 120.
+      expect(SkatRules.maxBid(strong), greaterThanOrEqualTo(60));
+      final weak = [c(7, kClubs), c(9, kHearts), c(13, kSpades), c(12, kDiamonds), c(10, kSpades), c(8, kHearts), c(13, kHearts), c(9, kDiamonds), c(1, kDiamonds), c(12, kClubs)];
+      expect(SkatRules.maxBid(weak), 0);
     });
 
     TrickState played(int game, {int extra = 0, int matadors = 1}) {
@@ -75,19 +159,62 @@ void main() {
       expect(r.openHand(s, 0), isFalse);
     });
 
-    test('Hand ihalesinde skat alınmaz, ilan edenin sayılır', () {
-      final s = r.deal(r.deck(), 2);
-      final kitty = List.of(s.kitty);
-      for (var i = 0; i < 3; i++) {
-        r.applyBid(s, s.turn, s.turn == 0 ? 11 : 0);
+    test('aşırı ihale: değer ihaleye ulaşmazsa kayıp, değer ihaleyi karşılayan kat', () {
+      final s = played(1, matadors: 1);
+      s.bids[0] = 60;
+      s.taken[0].addAll(r.deck().where((x) => suitOf(x) != kDiamonds));
+      s.tricks[0] = 8;
+      // ♦ 9 × (1 + 1 + Schneider 1) = 27 < 60 → kayıp, 9 × 7 = 63.
+      expect(r.gameValue(s), (63, false));
+      expect(r.overbid(s), isTrue);
+      expect(r.matchPoints(s), [-176, 40, 40]);
+    });
+
+    test('ilanlı Schneider: 90 göz gerekir, değere iki kat eklenir', () {
+      final s = played(5, extra: SkatRules.hand | SkatRules.schneiderAnnounced, matadors: 1);
+      final lost = {c(1, kHearts), c(10, kHearts), c(13, kHearts)};
+      s.taken[0].addAll(r.deck().where((x) => !lost.contains(x)));
+      s.taken[1].addAll(lost);
+      s.tricks[0] = 9;
+      // 95 göz: ♣ 12 × (1 + 1 + Hand + Schneider + ilan) = 60, kazandı.
+      expect(r.gameValue(s), (60, true));
+      s.taken[0].remove(c(1, kSpades));
+      s.taken[1].add(c(1, kSpades));
+      // 84 göz: Schneider olmadı → ilan tutmadı, kayıp.
+      expect(r.gameValue(s), (48, false));
+    });
+
+    test('yapay zekâ ihalesi: geçerli, Ramsch azınlıkta, ilan eden çoğunlukla kazanır', () {
+      var ramsch = 0, declared = 0, won = 0;
+      const n = 150;
+      for (var g = 0; g < n; g++) {
+        final rnd = SeededRandom(mixSeed([g, 31]));
+        final deck = r.deck();
+        shuffleCards(deck, rnd);
+        final s = r.deal(deck, g % 3);
+        final ai = TrickAI(r, 0, rnd);
+        while (s.phase != TrickPhase.over) {
+          final seat = s.turn;
+          if (s.phase == TrickPhase.bidding) {
+            final b = ai.bid(s, seat);
+            expect(r.legalBids(s, seat), contains(b));
+            r.applyBid(s, seat, b);
+            if (r.biddingOver(s)) r.finishBidding(s);
+          } else {
+            r.play(s, seat, ai.play(s, seat));
+          }
+        }
+        if (s.contract == SkatRules.ramsch) {
+          ramsch++;
+          continue;
+        }
+        declared++;
+        expect(SkatRules.bidOf(s), greaterThanOrEqualTo(18));
+        if (r.gameValue(s).$2) won++;
       }
-      r.finishBidding(s);
-      expect(s.declarer, 0);
-      expect(s.contract, 1);
-      expect(s.extra, SkatRules.hand);
-      expect(s.hands[0].length, 10);
-      expect(s.taken[0], kitty);
-      expect(s.aux, greaterThan(0));
+      expect(ramsch, lessThan(n * 0.25));
+      expect(won / declared, greaterThan(0.55));
+      expect(won / declared, lessThan(0.95));
     });
 
     test('Skat maçı 12 el, yapay zekâyla biter', () {

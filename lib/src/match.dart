@@ -567,7 +567,7 @@ class MahjongMatchPlan extends TableMatchPlan {
 
   @override
   Object level(MatchState m, {int difficulty = 4, int samples = 4, String Function(String lang)? caption}) {
-    final rules = MahjongRules(mj.style, round(m).clamp(0, 3));
+    final rules = MahjongRules(mj.style, round(m).clamp(0, 3), MahjongRules.skillFor(difficulty));
     final deck = rules.deck();
     shuffleCards(deck, SeededRandom(dealSeed(m)));
     return TableLevel(rules, rules.deal(deck, dealerOf(m)), _tableGoal(caption), dealSeed(m), difficulty, samples);

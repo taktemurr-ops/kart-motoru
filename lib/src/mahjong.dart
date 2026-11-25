@@ -2,6 +2,7 @@ import 'package:studio_core/core/rng.dart';
 
 import 'cards.dart';
 import 'kart_texts.dart';
+import 'mahjong_ai.dart';
 import 'table_engine.dart';
 import 'tile_painter.dart';
 
@@ -173,18 +174,35 @@ bool mjSevenPairs(List<int> counts) {
 ///
 /// piles: 0 duvar (kapalı), 1 atıklar, 2..2+n açık grupları, 2+n..2+2n grup
 /// kodları (gösterilmez: tür*100 + çeşit; 1 sıralı, 2 üçlü, 3 açık dörtlü,
-/// 4 kapalı dörtlü).
+/// 4 kapalı dörtlü), 2+2n..2+3n oyuncuların attığı taşlar (alınanlar dahil;
+/// furiten ve savunma için).
 /// vars: 0 aşama (0 çek, 1 at, 2 kazanma sorusu, 3 üçlü/dörtlü sorusu,
 /// 4 sıralı sorusu), 1 atan, 2 sorulan sıra (atandan uzaklık), 3 dora türü,
 /// 4 riichi bitleri, 5 kazanan + 1, 6 son çekilen taş + 1, 7 dağıtan,
-/// 8 kendi çekişiyle mi kazandı.
+/// 8 kendi çekişiyle mi kazandı, 9 geçici furiten bitleri (ron fırsatını
+/// geçen; kendi atışına kadar), 10 riichi furiteni bitleri (el sonuna kadar).
 class MahjongRules extends TableRules {
   final MahjongStyle style;
 
   /// Tur rüzgârı (0 doğu, 1 güney, 2 batı, 3 kuzey): o rüzgârın üçlüsü bir
   /// puan daha getirir. Maçta turlarla ilerler.
   final int roundWind;
-  const MahjongRules([this.style = MahjongStyle.classic, this.roundWind = 0]);
+
+  /// Rakip yapay zekâsının ustalığı: 0 kolay, 1 orta, 2 zor (zorluk
+  /// düzeyinden; bkz. [skillFor]). Oyuncunun koltuğu (0) için ipucu ve
+  /// doğrulamada her zaman en güçlüsü kullanılır.
+  final int skill;
+  const MahjongRules([this.style = MahjongStyle.classic, this.roundWind = 0, this.skill = 2]);
+
+  /// Zorluk (1..10) → yapay zekâ ustalığı.
+  static int skillFor(int difficulty) => difficulty <= 3 ? 0 : (difficulty <= 6 ? 1 : 2);
+
+  @override
+  TableRules forDifficulty(int difficulty) => MahjongRules(style, roundWind, skillFor(difficulty));
+
+  /// Monte Carlo benzetimi yerine doğrudan sezgisel karar (çok uzun eller).
+  @override
+  bool get heuristicAI => true;
 
   /// Maç: Riichi/Sanma Doğu + Güney turu (25.000 puanla başlanır); klasik ve
   /// Hong Kong dört rüzgâr turu. Sonuç [MahjongMatchPlan]'da hesaplanır.
@@ -275,12 +293,13 @@ class MahjongRules extends TableRules {
 
   int get exposedBase => 2;
   int get codeBase => 2 + seats;
+  int get riverBase => 2 + 2 * seats;
 
   @override
   TableState deal(List<KCard> shuffled, int dealer) {
     final wall = List.of(shuffled);
     final hands = [for (var p = 0; p < seats; p++) <KCard>[]];
-    final piles = <List<KCard>>[wall, [], for (var p = 0; p < seats * 2; p++) <KCard>[]];
+    final piles = <List<KCard>>[wall, [], for (var p = 0; p < seats * 3; p++) <KCard>[]];
     final s = TableState(seats: seats, hands: hands, piles: piles, vars: List.filled(12, 0), turn: dealer);
     for (var k = 0; k < 13; k++) {
       for (var p = 0; p < seats; p++) {
@@ -376,6 +395,8 @@ class MahjongRules extends TableRules {
         var han = 0;
         if (inRiichi(s, p)) han++;
         if (closed && selfDraw) han++;
+        final win = extra ?? (s.vars[6] > 0 ? s.vars[6] - 1 : null);
+        if (!seven && codes(s, p).isEmpty && win != null && pinfu(c, mjKind(win), s, p)) han++;
         if (simples) han++;
         han += dragons + sw + pw;
         if (allPungs) han += 2;
@@ -385,6 +406,56 @@ class MahjongRules extends TableRules {
         if (han == 0) return -1;
         return han + all[s.vars[3]];
     }
+  }
+
+  /// Pinfu: kapalı el, dört sıralı + yakuhai olmayan çift ve iki yönlü
+  /// (ryanmen) bekleyiş. [c] 14 taşlık elin sayıları, [win] kazandıran tür.
+  bool pinfu(List<int> c, int win, TableState s, int p) {
+    for (var k = 0; k < 34; k++) {
+      if (c[k] < 2) continue;
+      if (k >= 31 || k == 27 + seatWind(s, p) || k == 27 + roundWind.clamp(0, 3)) continue;
+      final x = List.of(c);
+      x[k] -= 2;
+      final starts = <int>[];
+      var ok = true;
+      for (var i = 0; i < 34 && ok; i++) {
+        while (x[i] > 0) {
+          if (i >= 27 || i % 9 > 6 || x[i + 1] == 0 || x[i + 2] == 0) {
+            ok = false;
+            break;
+          }
+          x[i]--;
+          x[i + 1]--;
+          x[i + 2]--;
+          starts.add(i);
+        }
+      }
+      if (!ok) continue;
+      if (starts.any((st) => (win == st && st % 9 != 6) || (win == st + 2 && st % 9 != 0))) return true;
+    }
+    return false;
+  }
+
+  /// Oyuncunun beklediği türler (yaku aranmaz).
+  List<int> waits(TableState s, int p) {
+    final c = counts(s.hands[p]);
+    final need = 4 - openSets(s, p);
+    return [
+      for (var k = 0; k < 34; k++)
+        if (c[k] < 4 && !(style == MahjongStyle.sanma && k >= 19 && k <= 25))
+          if (mjComplete(List.of(c)..[k] += 1, need) || (openSets(s, p) == 0 && mjSevenPairs(List.of(c)..[k] += 1))) k
+    ];
+  }
+
+  /// Furiten (Riichi): bekleyişlerinden biri kendi attıkları arasındaysa ya
+  /// da ron fırsatını geçtiyse atılan taşla kazanamaz (kendi çekişiyle olur).
+  bool furiten(TableState s, int p) {
+    if (!riichiLike) return false;
+    if (s.vars.length > 10 && ((s.vars[9] >> p) & 1 == 1 || (s.vars[10] >> p) & 1 == 1)) return true;
+    final i = riverBase + p;
+    if (i >= s.piles.length || s.piles[i].isEmpty) return false;
+    final mine = {for (final t in s.piles[i]) mjKind(t)};
+    return waits(s, p).any(mine.contains);
   }
 
   /// Atıldığında elin bir taş eksik (tenpai) kalıp kalmadığı.
@@ -475,7 +546,7 @@ class MahjongRules extends TableRules {
         final p = (d + off) % seats;
         bool can;
         if (phase == 2) {
-          can = winValue(s, p, t, selfDraw: false) > 0;
+          can = winValue(s, p, t, selfDraw: false) > 0 && !furiten(s, p);
         } else if (phase == 3) {
           can = !inRiichi(s, p) && s.hands[p].where((x) => mjKind(x) == k).length >= 2;
         } else {
@@ -524,6 +595,8 @@ class MahjongRules extends TableRules {
         final t = a.cards.first;
         h.remove(t);
         s.piles[1].add(t);
+        if (riverBase + p < s.piles.length) s.piles[riverBase + p].add(t);
+        s.vars[9] &= ~(1 << p);
         if (a.kind == 6) s.vars[4] |= 1 << p;
         s.vars[1] = p;
         s.vars[2] = 0;
@@ -539,6 +612,11 @@ class MahjongRules extends TableRules {
           _win(s, p, s.vars[1], v);
         }
       case 2:
+        // Ron fırsatını geçen furiten olur (riichi'deyse el sonuna kadar).
+        if (s.vars[0] == 2 && riichiLike) {
+          s.vars[9] |= 1 << p;
+          if (inRiichi(s, p)) s.vars[10] |= 1 << p;
+        }
         _nextClaim(s);
       case 3 || 4 || 5:
         final t = s.piles[1].removeLast();
@@ -609,52 +687,16 @@ class MahjongRules extends TableRules {
   @override
   bool isCardPlay(TAction a) => a.kind == 0;
 
-  int _useful(List<int> c, int k) {
-    if (k >= 34) return 99;
-    var v = (c[k] - 1) * 6;
-    if (mjSuited(k)) {
-      for (final d in const [-2, -1, 1, 2]) {
-        final j = k + d;
-        if (j >= 0 && j < 27 && j ~/ 9 == k ~/ 9 && c[j] > 0) v += d.abs() == 1 ? 3 : 2;
-      }
-      if (k % 9 == 0 || k % 9 == 8) v -= 1;
-    } else {
-      v -= 1;
-    }
-    return v;
-  }
+  /// Koltuğun yapay zekâ ustalığı.
+  int skillOf(int seat) => seat == 0 ? 2 : skill;
 
-  int _shanten(TableState s, int p, List<KCard> tiles) =>
-      mjShanten(counts(tiles), 4 - openSets(s, p), sevenPairs: openSets(s, p) == 0);
-
-  /// Taş atıldıktan sonra en iyi shanten ve o taş.
-  (int, KCard) _bestDiscard(TableState s, int p, List<KCard> hand, SeededRandom r, {KCard? only}) {
-    final c = counts(hand);
-    final need = 4 - openSets(s, p);
-    final closed = openSets(s, p) == 0;
-    var bv = 1 << 20, bt = hand.first, bs = 99;
-    final seen = <int>{};
-    for (final t in hand) {
-      if (only != null && t != only) continue;
-      final k = mjKind(t);
-      if (!seen.add(k)) continue;
-      c[k]--;
-      final sh = mjShanten(c, need, sevenPairs: closed);
-      c[k]++;
-      final v = sh * 1000 - _useful(c, k) * 3 + r.nextInt(3);
-      if (v < bv) {
-        bv = v;
-        bt = t;
-        bs = sh;
-      }
-    }
-    return (bs, bt);
-  }
-
+  /// Yapay zekâ: [MahjongBrain] (shanten + ukeire, yaku planı, savunma).
+  /// Oyuncunun koltuğu (ipucu, doğrulama) her zaman en güçlü düzeyle oynar.
   @override
   TAction quick(TableState s, SeededRandom r) {
     final p = s.turn;
     final h = s.hands[p];
+    final brain = MahjongBrain(this, s, p, skillOf(p));
     switch (s.vars[0]) {
       case 0:
         return const TAction(1);
@@ -664,32 +706,20 @@ class MahjongRules extends TableRules {
         if (winValue(s, p, null, selfDraw: true) > 0) return const TAction(9);
         final last = s.vars[6] - 1;
         final locked = inRiichi(s, p) && h.contains(last);
-        final (sh, tile) = _bestDiscard(s, p, h, r, only: locked ? last : null);
-        if (sh == 0 && riichiLike && !inRiichi(s, p) && concealed(s, p) && s.piles[0].length > 18) return TAction(6, [tile]);
+        if (locked) return TAction(0, [last]);
+        final (k, sh, _) = brain.bestDiscard(r);
+        final tile = h.lastWhere((t) => mjKind(t) == k);
+        if (sh == 0 && riichiLike && !inRiichi(s, p) && concealed(s, p) && s.piles[0].length > 18 && _tenpaiAfter(s, p, tile)) {
+          return TAction(6, [tile]);
+        }
         return TAction(0, [tile]);
     }
     final l = legalActions(s);
     if (l.length == 1) return l.first;
-    // Alırsam ve en iyi taşı atarsam hazıra yaklaşıyor muyum?
-    final now = _shanten(s, p, h);
     final t = s.piles[1].last;
     for (final a in l.reversed) {
       if (a.kind == 2) continue;
-      final rest = [...h]..removeWhere(a.cards.contains);
-      final need = 4 - openSets(s, p) - 1;
-      final c = counts(rest);
-      var after = 1 << 20;
-      final seen = <int>{};
-      for (final x in rest) {
-        final k = mjKind(x);
-        if (!seen.add(k)) continue;
-        c[k]--;
-        final v = mjShanten(c, need);
-        c[k]++;
-        if (v < after) after = v;
-      }
-      final honorPung = a.kind != 5 && (mjKind(t) >= 31 || mjKind(t) == 27 + seatWind(s, p));
-      if (after < now || (honorPung && after <= now)) return a;
+      if (brain.wantsCall(a, t)) return a;
     }
     return const TAction(2);
   }

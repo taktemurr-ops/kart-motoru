@@ -91,7 +91,7 @@ class TableGameRules extends GameRules<TableLevel> {
   @override
   TableLevel generate(LevelSpec spec) {
     final d = spec.difficulty.clamp(1, 10);
-    final rules = rulesFor(d);
+    final rules = rulesFor(d).forDifficulty(d);
     final r = SeededRandom(mixSeed([spec.seed, 3131]));
     final deck = rules.deck();
     shuffleCards(deck, r);

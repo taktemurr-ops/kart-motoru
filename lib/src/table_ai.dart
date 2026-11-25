@@ -13,7 +13,7 @@ class TableAI {
 
   TAction choose(TableState s) {
     final legal = rules.legalActions(s);
-    if (legal.length == 1 || samples <= 0) return legal.length == 1 ? legal.first : rules.quick(s, r);
+    if (legal.length == 1 || samples <= 0 || rules.heuristicAI) return legal.length == 1 ? legal.first : rules.quick(s, r);
     var cands = legal;
     if (cands.length > 14) {
       shuffleList(cands = List.of(legal), r);

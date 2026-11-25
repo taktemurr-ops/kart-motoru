@@ -41,6 +41,7 @@ export 'src/tile_painter.dart';
 export 'src/okey.dart';
 export 'src/domino.dart';
 export 'src/mahjong.dart';
+export 'src/mahjong_ai.dart';
 export 'src/trick_games5.dart';
 export 'src/trix.dart';
 export 'src/match.dart';

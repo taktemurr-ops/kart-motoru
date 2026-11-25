@@ -163,6 +163,13 @@ abstract class TableRules {
     return l[r.nextInt(l.length)];
   }
 
+  /// Yapay zekâ Monte Carlo benzetimi yerine doğrudan [quick] ile karar
+  /// verir (sezgileri güçlü, eli çok uzun oyunlar; ör. Mahjong).
+  bool get heuristicAI => false;
+
+  /// Zorluk düzeyine (1..10) göre kurallar (ör. rakip ustalığı).
+  TableRules forDifficulty(int difficulty) => this;
+
   /// Rakiplerin elleri kapalıdır; bilinmeyen kartlar her benzetimde yeniden
   /// dağıtılır. Bazı oyunlarda (Balık Tut) bilinen kartlar vardır.
   List<KCard> knownCards(TableState s, int seat) => const [];
