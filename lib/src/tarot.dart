@@ -50,6 +50,18 @@ int tarotPoints2(KCard c) {
 class TarotRules extends TrickRules {
   const TarotRules();
 
+  /// 12 el; alan oyuncu üç rakibe karşı oynar (sıfır toplamlı puan).
+  @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 12);
+
+  @override
+  List<int> matchPoints(TrickState s) {
+    final d = s.declarer;
+    if (d < 0) return List.filled(seats, 0);
+    final sc = handScores(s);
+    return [for (var i = 0; i < seats; i++) i == d ? sc[d] * (seats - 1) : -sc[d]];
+  }
+
   static const petite = 1, garde = 2, gardeSans = 3, gardeContre = 4;
   static const _need2 = [112, 102, 82, 72];
   static const _mult = [0, 1, 2, 4, 6];

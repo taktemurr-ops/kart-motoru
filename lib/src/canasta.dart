@@ -19,6 +19,10 @@ class CanastaRules extends TableRules {
   final bool handAndFoot;
   const CanastaRules({this.handAndFoot = false});
 
+  /// Kanasta 5000 puana; El ve Ayak dört el.
+  @override
+  MatchFormat get matchFormat => handAndFoot ? const MatchFormat(deals: 4) : const MatchFormat(target: 5000);
+
   @override
   int get seats => 2;
   @override

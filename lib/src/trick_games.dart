@@ -42,6 +42,13 @@ class HeartsRules extends TrickRules {
   const HeartsRules();
 
   @override
+  MatchFormat get matchFormat => const MatchFormat(target: 100, lowWins: true);
+
+  /// Maçta ceza puanı birikir (100'e varan olunca en az ceza kazanır).
+  @override
+  List<int> matchPoints(TrickState s) => [for (final x in handScores(s)) -x];
+
+  @override
   bool get avoidTricks => true;
 
   @override
@@ -107,6 +114,9 @@ class HeartsRules extends TrickRules {
 /// Maça Koz (Spades): eşli; herkes el tahmini söyler, maça kozdur.
 class SpadesRules extends TrickRules {
   const SpadesRules();
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 500);
 
   @override
   bool get partnerships => true;
@@ -190,6 +200,10 @@ class BatakRules extends TrickRules {
   final bool spadesTrump;
   final int minBid;
   const BatakRules({this.pairs = false, this.spadesTrump = false, this.minBid = 5});
+
+  /// Batak maçı genellikle belli sayıda el oynanır.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 12);
 
   @override
   bool get partnerships => pairs;
@@ -353,6 +367,13 @@ class BatakRules extends TrickRules {
 class WhistRules extends TrickRules {
   const WhistRules();
 
+  /// Kısa Whist: altıyı geçen her el bir puan; 5 puan oyunu kazanır.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 5);
+
+  @override
+  List<int> matchPoints(TrickState s) => [for (final t in handScores(s)) t > 6 ? t - 6 : 0];
+
   @override
   bool get partnerships => true;
 
@@ -384,6 +405,17 @@ class WhistRules extends TrickRules {
 class OhHellRules extends TrickRules {
   final int cards;
   const OhHellRules({this.cards = 7});
+
+  /// Maç: el büyüklüğü [cards]'tan bire iner, sonra yeniden çıkar.
+  @override
+  MatchFormat get matchFormat => MatchFormat(deals: 2 * cards - 1);
+
+  @override
+  TrickRules rulesForDeal(int deal) {
+    final d = deal % (2 * cards - 1);
+    final n = d <= cards - 1 ? cards - d : d - cards + 2;
+    return n == cards ? this : OhHellRules(cards: n);
+  }
 
   @override
   int get handSize => cards;
@@ -453,6 +485,13 @@ const _italianRanks = [1, 2, 3, 4, 5, 6, 7, 11, 12, 13];
 class BriscolaRules extends TrickRules {
   const BriscolaRules();
 
+  /// Üç elin en iyisi: iki el kazanan maçı alır.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 2);
+
+  @override
+  List<int> matchPoints(TrickState s) => [for (final p in points(s)) p > 60 ? 1 : 0];
+
   @override
   int get seats => 2;
   @override
@@ -508,6 +547,15 @@ class BriscolaRules extends TrickRules {
 class SuecaRules extends TrickRules {
   const SuecaRules();
 
+  /// Maç dört oyun puanına: 61–90 bir, 91–119 iki, 120 dört puan.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 4);
+
+  @override
+  List<int> matchPoints(TrickState s) => [
+        for (final p in points(s)) p == 120 ? 4 : (p >= 91 ? 2 : (p >= 61 ? 1 : 0)),
+      ];
+
   @override
   bool get partnerships => true;
   @override
@@ -555,6 +603,19 @@ class SuecaRules extends TrickRules {
 /// çok el alan kazanır. Sözleşme dağıtımla belirlenir.
 class KingRules extends TrickRules {
   const KingRules();
+
+  /// King: 20 el; her oyuncu sırası gelince 3 ceza ve 2 koz seçer.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 20);
+
+  /// Maçta seçilen sözleşmeyi uygula (koz: [trump] rengi).
+  void applyContract(TrickState s, int contract, int trump) {
+    s.contract = contract;
+    s.trump = contract == 6 ? trump : -1;
+    for (final h in s.hands) {
+      sortHand(h, s.trump);
+    }
+  }
 
   static const contracts = 7; // 0 el, 1 kupa, 2 erkek, 3 kız, 4 son iki, 5 rıfkı, 6 koz
 

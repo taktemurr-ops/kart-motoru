@@ -43,3 +43,5 @@ export 'src/domino.dart';
 export 'src/mahjong.dart';
 export 'src/trick_games5.dart';
 export 'src/trix.dart';
+export 'src/match.dart';
+export 'src/match_view.dart';

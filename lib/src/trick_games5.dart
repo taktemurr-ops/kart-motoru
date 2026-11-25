@@ -33,7 +33,8 @@ int _teamTricks(TrickState s, int team) => s.tricks[team] + s.tricks[team + 2];
 
 /// Sırayla artırılan ihale: pas diyen ihaleden çıkar. Biri ihale verip
 /// diğer herkes pas deyince ihale biter; hiç kimse vermezse dağıtan en
-/// düşük ihaleyi almak zorundadır. Sonra ihaleyi alan kozu seçer.
+/// düşük ihaleyi almak zorundadır (maç modunda el yeniden dağıtılır).
+/// Sonra ihaleyi alan kozu seçer.
 /// bids[p]: 0 pas, >0 son ihalesi; extra 2: koz seçimi, 3: seçildi.
 mixin _Auction on TrickRules {
   static const trumpBase = 100;
@@ -91,6 +92,9 @@ mixin _Auction on TrickRules {
     if (s.declarer >= 0 && (passed >= seats - 1 || s.contract >= maxBid)) {
       s.extra = 2;
       s.turn = s.declarer;
+    } else if (passed >= seats && s.matchPlay) {
+      // Maçta herkes pas: kartlar toplanır, sıradaki dağıtır.
+      s.phase = TrickPhase.over;
     } else if (passed >= seats) {
       // Herkes pas: dağıtan en düşük ihaleyi almak zorunda.
       s.declarer = s.dealer;
@@ -132,6 +136,10 @@ mixin _Auction on TrickRules {
 /// yazar.
 class TarneebRules extends TrickRules with _Auction {
   const TarneebRules();
+
+  /// Tarneeb maçı 31 puana.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 31);
 
   @override
   bool get partnerships => true;
@@ -190,6 +198,17 @@ class TarneebRules extends TrickRules with _Auction {
 /// olduysa 3 puan.
 class HokmRules extends TrickRules {
   const HokmRules();
+
+  /// Hokm maçı 7 puana (kot 2, hakeme kot 3).
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 7);
+
+  @override
+  List<int> matchPoints(TrickState s) {
+    final w = winnerTeam(s);
+    final pts = handPoints(s);
+    return [for (var p = 0; p < seats; p++) p % 2 == w ? pts : 0];
+  }
 
   static const trumpBase = 100;
 
@@ -322,6 +341,16 @@ class HokmRules extends TrickRules {
 class BalootRules extends TrickRules {
   const BalootRules();
 
+  /// Baloot maçı 152 puana.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 152);
+
+  @override
+  List<int> matchPoints(TrickState s) {
+    final gp = gamePoints(s);
+    return [for (var p = 0; p < seats; p++) gp[p % 2]];
+  }
+
   static const sunBid = 200, hokmBase = 100;
 
   @override
@@ -369,7 +398,7 @@ class BalootRules extends TrickRules {
     if (s.bidTurns < seats) {
       return s.contract == 1 ? [0, sunBid] : [0, hokmBase + up, sunBid];
     }
-    final forced = seat == s.dealer && s.bidTurns >= 2 * seats - 1;
+    final forced = !s.matchPlay && seat == s.dealer && s.bidTurns >= 2 * seats - 1;
     return [if (!forced) 0, for (var t = 0; t < 4; t++) if (t != up) hokmBase + t, sunBid];
   }
 
@@ -448,6 +477,11 @@ class BalootRules extends TrickRules {
 
   @override
   void finishBidding(TrickState s) {
+    if (s.declarer < 0) {
+      // Maçta iki turda da herkes pas: el yeniden dağıtılır.
+      s.phase = TrickPhase.over;
+      return;
+    }
     final up = s.kitty.removeAt(0);
     s.hands[s.declarer].add(up);
     var k = 0;
@@ -558,12 +592,29 @@ class BalootRules extends TrickRules {
 /// 29 (Güney Asya): 32 kart, dörtlü ortaklı. Güç ve puan sırası: Vale (3),
 /// Dokuz (2), As (1), On (1), Papaz, Kız, 8, 7 — toplam 28 puan. Dörder kart
 /// dağıtılınca 16–28 arası ihale yapılır; ihaleyi alan kozu kapalı seçer,
-/// sonra dörder kart daha dağıtılır. Rengin yoksa koz açılır ve elinde koz
-/// varsa koz atmak zorundasın; koz açılmadan atılan koz renkleri koz sayılmaz.
+/// sonra dörder kart daha dağıtılır. Rengin yoksa istediğini atabilir ya da
+/// "Koz açtır" diyebilirsin: koz açılır ve elinde koz varsa o elde koz atmak
+/// zorundasın. Koz açılmadan atılan koz renkleri koz sayılmaz.
 /// Koz açıldıktan sonra kozun Papaz+Kızı ("çift") bir eldeyse ihale o tarafın
 /// lehine 4 değişir. Alan taraf ihalesi kadar puan alırsa kazanır.
 class TwentyNineRules extends TrickRules with _Auction {
   const TwentyNineRules();
+
+  /// Maç: ihaleyi tutturan taraf +1, tutturamayan −1; +6'ya varan kazanır,
+  /// −6'ya düşen kaybeder.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 6, loseAt: 6);
+
+  @override
+  List<int> matchPoints(TrickState s) {
+    if (s.declarer < 0) return List.filled(seats, 0);
+    final mk = s.declarer % 2;
+    final made = teamPoints(s)[mk] >= target(s);
+    return [for (var p = 0; p < seats; p++) p % 2 == mk ? (made ? 1 : -1) : 0];
+  }
+
+  /// "Koz açtır" hamlesi.
+  static const showTrump = 1;
 
   @override
   bool get partnerships => true;
@@ -679,24 +730,56 @@ class TwentyNineRules extends TrickRules with _Auction {
     final lead = suitOf(s.trick.first);
     final follow = h.where((c) => suitOf(c) == lead).toList();
     if (follow.isNotEmpty) return follow;
-    if (!revealed(s)) {
-      // Rengi olmayan kozu açtırır ve elinde koz varsa koz atar.
-      final hs = hiddenSuit(s);
-      final trumps = h.where((c) => suitOf(c) == hs).toList();
+    if (revealed(s) && s.aux == seat) {
+      // Bu elde kozu açtıran, elinde koz varsa koz atmak zorunda.
+      final trumps = h.where((c) => suitOf(c) == s.trump).toList();
       if (trumps.isNotEmpty) return trumps;
     }
     return List.of(h);
   }
 
   @override
-  void onPlay(TrickState s, int seat, KCard c) {
-    if (!revealed(s) && s.trick.length > 1 && suitOf(c) != suitOf(s.trick.first)) {
-      s.trump = hiddenSuit(s);
-      for (final hand in s.hands) {
-        sortHand(hand, s.trump);
-      }
+  List<int> playActions(TrickState s, int seat) {
+    if (s.phase != TrickPhase.play || s.trick.isEmpty || revealed(s) || hiddenSuit(s) < 0) return const [];
+    final lead = suitOf(s.trick.first);
+    if (s.hands[seat].any((c) => suitOf(c) == lead)) return const [];
+    return const [showTrump];
+  }
+
+  @override
+  String playActionLabel(int action, String lang) => kt(lang, 'showTrump');
+
+  @override
+  void applyPlayAction(TrickState s, int seat, int action) {
+    if (action != showTrump || playActions(s, seat).isEmpty) return;
+    s.trump = hiddenSuit(s);
+    s.aux = seat;
+    for (final hand in s.hands) {
+      sortHand(hand, s.trump);
     }
   }
+
+  /// Yapay zekâ: eşi eli almıyorsa kozu açtırır (kesmek için).
+  @override
+  int? aiPlayAction(TrickState s, int seat, SeededRandom r) {
+    if (playActions(s, seat).isEmpty) return null;
+    final lead = suitOf(s.trick.first);
+    var bestIx = 0;
+    for (var i = 1; i < s.trick.length; i++) {
+      if (beats(s, s.trick[i], s.trick[bestIx], lead)) bestIx = i;
+    }
+    final winner = (s.leader + bestIx) % seats;
+    if (winner == s.partnerOf(seat)) return null;
+    final hasTrump = s.hands[seat].any((c) => suitOf(c) == hiddenSuit(s));
+    var pts = 0;
+    for (final c in s.trick) {
+      pts += cardPoints(c);
+    }
+    return hasTrump || pts > 0 || r.chance(0.5) ? showTrump : null;
+  }
+
+  @override
+  void afterTrick(TrickState s, int winner) => s.aux = -1;
 
   int pairTeam(TrickState s) => s.phase != TrickPhase.bidding && s.bidTurns >= 100 ? s.bidTurns - 100 : -1;
 
@@ -770,19 +853,137 @@ final trixAvoidGoal = TrickGoal(
 /// 0 Kupa Papazı (−75; kupayla çıkılmaz, rengin yoksa Papaz'ı atmak zorunlu),
 /// 1 Kızlar (her kız −25), 2 Karolar (her karo −10; karo atılmadan karoyla
 /// çıkılmaz), 3 Eller (her el −15). Ceza kartlarının hepsi alınınca el biter.
+///
+/// Katlama (Kupa Papazı ve Kızlar): ilk elden önce Papaz'ı ya da kızları
+/// elinde tutan, onları açıp katlayabilir. Katlanan kartı alan iki kat ceza
+/// yazar; kartı başkası aldıysa katlayan, kartın cezası kadar artı alır.
+/// bids[koltuk]: katladığı kartların maskesi (bit 0–3 renklerin kızı, bit 4
+/// Kupa Papazı). [king]: maçta krallığın sahibi ilk eli açar (-1: dağıtanın
+/// solundaki).
 class TrixRules extends TrickRules {
   final int contract;
-  const TrixRules(this.contract);
+  final int king;
+  const TrixRules(this.contract, {this.king = -1});
 
   static final _kh = makeCard(13, kHearts);
+  static const khBit = 16;
 
   @override
   bool get avoidTricks => true;
 
   @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 20);
+
+  @override
+  bool get hasBidding => contract <= 1;
+
+  @override
   void setupAfterDeal(TrickState s) {
     s.contract = contract;
     startPlay(s);
+    if (king >= 0) {
+      s.leader = king;
+      s.turn = king;
+    }
+    if (contract <= 1) {
+      final first = _nextDoubler(s, s.leader);
+      if (first >= 0) {
+        s.phase = TrickPhase.bidding;
+        s.turn = first;
+      }
+    }
+  }
+
+  /// Koltuğun katlayabileceği kartların maskesi.
+  int doubleMask(TrickState s, int seat) {
+    final h = s.hands[seat];
+    if (contract == 0) return h.contains(_kh) ? khBit : 0;
+    if (contract == 1) {
+      var m = 0;
+      for (final c in h) {
+        if (rankOf(c) == 12) m |= 1 << suitOf(c);
+      }
+      return m;
+    }
+    return 0;
+  }
+
+  /// [from]'dan başlayarak henüz karar vermemiş, katlayabilecek ilk koltuk.
+  int _nextDoubler(TrickState s, int from) {
+    for (var k = 0; k < seats; k++) {
+      final p = (from + k) % seats;
+      if (s.bids[p] == null && doubleMask(s, p) != 0) return p;
+    }
+    return -1;
+  }
+
+  @override
+  List<int> legalBids(TrickState s, int seat) {
+    final m = doubleMask(s, seat);
+    return [for (var sub = 0; sub <= m; sub++) if (sub & m == sub) sub];
+  }
+
+  @override
+  String bidPrompt(TrickState s, String lang) => kt(lang, 'doublePrompt');
+
+  @override
+  String bidLabel(int bid, String lang) {
+    if (bid == 0) return _pass(lang);
+    final parts = <String>[
+      if (bid & khBit != 0) 'K${_suitSym[kHearts]}',
+      for (var su = 0; su < 4; su++)
+        if (bid & (1 << su) != 0) 'Q${_suitSym[su]}',
+    ];
+    return '${parts.join(' ')} ×2';
+  }
+
+  @override
+  void applyBid(TrickState s, int seat, int bid) {
+    s.bids[seat] = bid;
+    s.bidTurns++;
+    final next = _nextDoubler(s, (seat + 1) % seats);
+    s.turn = next >= 0 ? next : s.leader;
+  }
+
+  @override
+  bool biddingOver(TrickState s) => _nextDoubler(s, s.leader) < 0;
+
+  @override
+  void finishBidding(TrickState s) {
+    final lead = s.leader;
+    s.phase = TrickPhase.play;
+    s.leader = lead;
+    s.turn = lead;
+  }
+
+  /// Yapay zekâ: renkte yeterince küçük kartı olan kartı katlar.
+  @override
+  int aiBid(TrickState s, int seat, SeededRandom r) {
+    final h = s.hands[seat];
+    var out = 0;
+    bool safe(int suit, int rank) {
+      final cs = h.where((c) => suitOf(c) == suit).toList();
+      final low = cs.where((c) => rankOf(c) != 1 && rankOf(c) < rank - 3).length;
+      final high = cs.where((c) => rankOf(c) == 1 || rankOf(c) > rank).length;
+      return cs.length >= 4 && low >= 2 && high <= 1 && r.chance(0.8);
+    }
+
+    final m = doubleMask(s, seat);
+    if (m & khBit != 0 && safe(kHearts, 13)) out |= khBit;
+    for (var su = 0; su < 4; su++) {
+      if (m & (1 << su) != 0 && safe(su, 12)) out |= 1 << su;
+    }
+    return out;
+  }
+
+  /// Katlanan kartı katlayan koltuk (yoksa -1).
+  int doubler(TrickState s, KCard c) {
+    final bit = c == _kh ? khBit : (rankOf(c) == 12 ? 1 << suitOf(c) : 0);
+    if (bit == 0 || contract > 1) return -1;
+    for (var p = 0; p < seats; p++) {
+      if ((s.bids[p] ?? 0) & bit != 0) return p;
+    }
+    return -1;
   }
 
   @override
@@ -838,15 +1039,31 @@ class TrixRules extends TrickRules {
       };
 
   @override
-  List<int> handScores(TrickState s) => [
-        for (var p = 0; p < seats; p++)
-          switch (contract) {
-            0 => -75 * penaltyCards(s.taken[p]),
-            1 => -25 * penaltyCards(s.taken[p]),
-            2 => -10 * penaltyCards(s.taken[p]),
-            _ => -15 * s.tricks[p],
-          }
-      ];
+  List<int> handScores(TrickState s) {
+    final out = [
+      for (var p = 0; p < seats; p++)
+        switch (contract) {
+          0 => -75 * penaltyCards(s.taken[p]),
+          1 => -25 * penaltyCards(s.taken[p]),
+          2 => -10 * penaltyCards(s.taken[p]),
+          _ => -15 * s.tricks[p],
+        }
+    ];
+    if (contract <= 1) {
+      // Katlanan kartlar: alan bir kat daha ceza, katlayan (başkası aldıysa) artı.
+      final unit = contract == 0 ? 75 : 25;
+      for (var p = 0; p < seats; p++) {
+        for (final c in s.taken[p]) {
+          if (contract == 0 ? c != _kh : rankOf(c) != 12) continue;
+          final d = doubler(s, c);
+          if (d < 0) continue;
+          out[p] -= unit;
+          if (d != p) out[d] += unit;
+        }
+      }
+    }
+    return out;
+  }
 
   @override
   String status(TrickState s, String lang) {

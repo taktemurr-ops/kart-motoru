@@ -20,6 +20,24 @@ const kVirtualTrump = 4;
 class SkatRules extends TrickRules {
   const SkatRules();
 
+  /// Liste: 12 el (herkes dört kez dağıtır).
+  @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 12);
+
+  static const _base = {1: 9, 2: 10, 3: 11, 5: 12, nullGame: 23, grand: 24};
+
+  /// Kazanan ilan eden oyun değeri (temel × 2) alır, kaybeden iki katını
+  /// verir; Ramsch'ta herkes aldığı göz puanı kadar eksi yazar.
+  @override
+  List<int> matchPoints(TrickState s) {
+    if (s.contract == ramsch) return handScores(s);
+    final d = s.declarer;
+    if (d < 0) return List.filled(seats, 0);
+    final v = (_base[s.contract] ?? 10) * 2;
+    final won = handScores(s)[d] > 0;
+    return [for (var i = 0; i < seats; i++) i == d ? (won ? v : -2 * v) : 0];
+  }
+
   @override
   int get seats => 3;
   @override
@@ -180,6 +198,21 @@ class SheepsheadRules extends TrickRules {
   const SheepsheadRules();
 
   @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 12);
+
+  /// Herkes pas (en az alan kazanır): en az puanı alan +3, diğerleri −1.
+  @override
+  List<int> matchPoints(TrickState s) {
+    if (s.declarer >= 0) return handScores(s);
+    final p = points(s);
+    var low = 0;
+    for (var i = 1; i < seats; i++) {
+      if (p[i] < p[low]) low = i;
+    }
+    return [for (var i = 0; i < seats; i++) i == low ? 3 : -1];
+  }
+
+  @override
   int get handSize => 8;
   @override
   bool get hasBidding => true;
@@ -289,6 +322,10 @@ class SheepsheadRules extends TrickRules {
 class ContractBridgeRules extends TrickRules {
   const ContractBridgeRules();
 
+  /// Chicago: dört el.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(deals: 4);
+
   @override
   bool get partnerships => true;
   @override
@@ -358,6 +395,11 @@ class ContractBridgeRules extends TrickRules {
 
   @override
   void finishBidding(TrickState s) {
+    if (s.contract == 0 && s.matchPlay) {
+      // Maçta herkes pas: el yeniden dağıtılır.
+      s.phase = TrickPhase.over;
+      return;
+    }
     if (s.contract == 0) {
       // Herkes pas: dağıtan 1 kozsuz oynar.
       s.contract = 5;
@@ -402,6 +444,9 @@ class ContractBridgeRules extends TrickRules {
 /// eli geçmek zorunlu.
 class BezikRules extends TrickRules {
   const BezikRules();
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 1000);
 
   @override
   int get seats => 2;

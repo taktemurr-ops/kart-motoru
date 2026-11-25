@@ -27,6 +27,10 @@ void _sortHand(List<KCard> h) => h.sort((a, b) => (suitOf(a) * 20 + (rankOf(a) =
 class PistiRules extends TableRules {
   const PistiRules();
 
+  /// Pişti maçı 151 puana.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 151);
+
   // yığınlar: 0 deste, 1 masa
   @override
   List<PileView> get pileViews => const [
@@ -263,6 +267,9 @@ class ScopaRules extends _SumCaptureRules {
   const ScopaRules();
 
   @override
+  MatchFormat get matchFormat => const MatchFormat(target: 11);
+
+  @override
   List<KCard> deck() => buildDeck(ranks: const [1, 2, 3, 4, 5, 6, 7, 11, 12, 13]);
   @override
   int get handCards => 3;
@@ -295,6 +302,9 @@ class ScopaRules extends _SumCaptureRules {
 /// en çok maça 1, karo 10 iki, maça 2 bir, her As bir puan.
 class CassinoRules extends _SumCaptureRules {
   const CassinoRules();
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 21);
 
   @override
   int get handCards => 4;
@@ -333,6 +343,13 @@ class CassinoRules extends _SumCaptureRules {
 class ColorMatchRules extends TableRules {
   final int players;
   const ColorMatchRules({this.players = 3});
+
+  /// Elde kalan kartların cezası birikir; 100'e varan olunca en az ceza kazanır.
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 100, lowWins: true);
+
+  @override
+  List<int> matchPoints(TableState s) => [for (final h in s.hands) penalty(h)];
 
   @override
   int get seats => players;

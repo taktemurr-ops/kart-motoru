@@ -6,6 +6,7 @@ import 'package:studio_core/core/stats.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
 import 'table_ai.dart';
 import 'table_engine.dart';
 
@@ -59,8 +60,21 @@ class TableGameRules extends GameRules<TableLevel> {
   static bool versus(LevelSpec spec) => spec.mode == GameModeId.versus || spec.mode == GameModeId.online;
   @override
   List<String> get optionalMechanics => const [];
+  /// Maç modu var mı (çok elli, hedef puanlı oyun).
+  bool get hasMatch => rulesFor(1).matchFormat != null;
+
   @override
-  List<GameModeId> get modes => const [GameModeId.campaign, GameModeId.daily, GameModeId.weekly, GameModeId.challenge];
+  List<GameModeId> get modes => [
+        GameModeId.campaign,
+        GameModeId.daily,
+        GameModeId.weekly,
+        GameModeId.challenge,
+        if (hasMatch) GameModeId.endless,
+      ];
+
+  /// "Sonsuz" mod kartı bu oyunlarda "Maç" olarak görünür.
+  @override
+  Map<String, List<String>> get strings => hasMatch ? kMatchModeStrings : const {};
   @override
   List<GameStat> get gameStats => const [
         GameStat('cards_won', 'Kazanılan kart', 'Cards won', scale: 200),
@@ -97,7 +111,7 @@ class TableGameRules extends GameRules<TableLevel> {
 
   @override
   Validation validate(TableLevel level, LevelSpec spec) {
-    if (versus(spec)) return const Validation.ok(0);
+    if (versus(spec) || spec.mode == GameModeId.endless) return const Validation.ok(0);
     final end = simulate(level, seat0Samples: (16 * aiScale).round().clamp(4, 16), quick: quickValidate);
     if (!end.over) return const Validation.fail('did not finish');
     if (!level.goal.check(level.rules, end)) return const Validation.fail('goal not reached');

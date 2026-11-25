@@ -15,6 +15,9 @@ class TrickAI {
 
   int bid(TrickState s, int seat) => rules.aiBid(s, seat, r);
 
+  /// Kartsız hamle (ör. koz açtırma) kararı; null: kart oyna.
+  int? action(TrickState s, int seat) => rules.playActions(s, seat).isEmpty ? null : rules.aiPlayAction(s, seat, r);
+
   KCard play(TrickState s, int seat) {
     final legal = rules.legalPlays(s, seat);
     if (legal.length == 1 || samples <= 0) return legal.length == 1 ? legal.first : quick(rules, s, seat, r);
@@ -87,6 +90,10 @@ class TrickAI {
     var guard = 0;
     while (w.phase == TrickPhase.play && guard++ < 200) {
       final seat = w.turn;
+      if (rules.playActions(w, seat).isNotEmpty) {
+        final a = rules.aiPlayAction(w, seat, r);
+        if (a != null) rules.applyPlayAction(w, seat, a);
+      }
       rules.play(w, seat, quick(rules, w, seat, r));
     }
   }

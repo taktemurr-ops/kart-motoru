@@ -6,6 +6,7 @@ import 'package:studio_core/core/stats.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
 import 'trick_ai.dart';
 import 'trick_engine.dart';
 
@@ -57,8 +58,22 @@ class TrickGameRules extends GameRules<TrickLevel> {
   @override
   List<String> get optionalMechanics => const [];
 
+  /// Maç modu var mı (çok elli, hedef puanlı oyun).
+  bool get hasMatch => rulesFor(1).matchFormat != null;
+
   @override
-  List<GameModeId> get modes => const [GameModeId.campaign, GameModeId.daily, GameModeId.weekly, GameModeId.challenge];
+  List<GameModeId> get modes => [
+        GameModeId.campaign,
+        GameModeId.daily,
+        GameModeId.weekly,
+        GameModeId.challenge,
+        if (hasMatch) GameModeId.endless,
+      ];
+
+  /// "Sonsuz" mod kartı bu oyunlarda "Maç" olarak görünür (studio-core
+  /// GameRules.strings; eski çekirdekte yok sayılır).
+  @override
+  Map<String, List<String>> get strings => hasMatch ? kMatchModeStrings : const {};
 
   @override
   List<GameStat> get gameStats => const [
@@ -100,6 +115,11 @@ class TrickGameRules extends GameRules<TrickLevel> {
         l.rules.applyBid(s, seat, ais[seat].bid(s, seat));
         if (l.rules.biddingOver(s)) l.rules.finishBidding(s);
       } else {
+        final a = ais[seat].action(s, seat);
+        if (a != null) {
+          l.rules.applyPlayAction(s, seat, a);
+          continue;
+        }
         l.rules.play(s, seat, ais[seat].play(s, seat));
       }
     }
@@ -108,7 +128,9 @@ class TrickGameRules extends GameRules<TrickLevel> {
 
   @override
   Validation validate(TrickLevel level, LevelSpec spec) {
-    if (spec.mode == GameModeId.versus || spec.mode == GameModeId.online) return const Validation.ok(0);
+    if (spec.mode == GameModeId.versus || spec.mode == GameModeId.online || spec.mode == GameModeId.endless) {
+      return const Validation.ok(0);
+    }
     final end = simulate(level);
     if (end.phase != TrickPhase.over) return const Validation.fail('did not finish');
     if (!level.goal.check(level.rules, end)) return const Validation.fail('goal not reached');

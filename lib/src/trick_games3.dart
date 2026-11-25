@@ -91,6 +91,9 @@ class EuchreRules extends TrickRules with _NameTrump {
   const EuchreRules();
 
   @override
+  MatchFormat get matchFormat => const MatchFormat(target: 10);
+
+  @override
   bool get partnerships => true;
   @override
   int get handSize => 5;
@@ -177,6 +180,10 @@ class BeloteRules extends TrickRules with _NameTrump {
   /// Jass: 36 kart (6'lar dahil), son el 5 puan.
   final bool jass;
   const BeloteRules({this.alwaysTrump = false, this.jass = false});
+
+  /// Belote ve Jass 1000 puana; Klaverjas 16 el.
+  @override
+  MatchFormat get matchFormat => alwaysTrump ? const MatchFormat(deals: 16) : const MatchFormat(target: 1000);
 
   @override
   bool get partnerships => true;
@@ -301,6 +308,9 @@ class BeloteRules extends TrickRules with _NameTrump {
 /// Renge uymak, eli geçmeye çalışmak, renk yoksa koz atmak zorunlu.
 class PinochleRules extends TrickRules {
   const PinochleRules();
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 150);
 
   @override
   bool get partnerships => true;

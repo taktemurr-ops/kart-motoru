@@ -197,6 +197,32 @@ class RummyRules extends TableRules {
   final List<bool>? contract;
   const RummyRules({this.players = 3, this.handSize = 7, this.decks = 1, this.openMin = 0, this.contract});
 
+  /// Aşamalı Remi maçının dört aşaması (true: seri, false: set).
+  static const phases = [
+    [false, false],
+    [false, true],
+    [true, true],
+    [false, false, false],
+  ];
+
+  /// Remi 100 puana (biten, diğerlerinin kart değerini alır); Konken'de ve
+  /// Aşamalı Remi'de elde kalan kartlar ceza yazar, en az ceza kazanır.
+  @override
+  MatchFormat get matchFormat => contract != null
+      ? MatchFormat(deals: phases.length, lowWins: true)
+      : (openMin > 0 ? const MatchFormat(target: 101, lowWins: true) : const MatchFormat(target: 100));
+
+  @override
+  List<int> matchPoints(TableState s) => [
+        for (final x in finalScores(s))
+          contract != null || openMin > 0 ? (x < 0 ? -x : 0) : (x > 0 ? x : 0),
+      ];
+
+  @override
+  TableRules rulesForDeal(int deal) => contract == null
+      ? this
+      : RummyRules(players: players, handSize: handSize, decks: decks, openMin: openMin, contract: phases[deal % phases.length]);
+
   @override
   int get seats => players;
   @override
@@ -451,6 +477,12 @@ class RummyRules extends TableRules {
 /// senin perlerine işler; ölü kartı senden azsa ya da eşitse o kazanır (+25).
 class GinRummyRules extends TableRules {
   const GinRummyRules();
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 100);
+
+  @override
+  List<int> matchPoints(TableState s) => [for (final x in finalScores(s)) x > 0 ? x : 0];
 
   @override
   int get seats => 2;

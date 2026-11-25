@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:studio_core/core/rng.dart';
 
 import 'cards.dart';
+import 'trick_engine.dart' show MatchFormat;
+
+export 'trick_engine.dart' show MatchFormat;
 
 /// Sıra tabanlı "masa" oyunları (Pişti, Scopa, Renk Eşle, Durak, Başkan,
 /// Papaz Kaçtı, Balık Tut, Blöf, 31 …) için ortak durum ve kurallar.
@@ -175,4 +178,14 @@ abstract class TableRules {
 
   /// Kart/taş yüksekliğinin genişliğe oranı.
   double get tileAspect => 1.4;
+
+  // ---- maç (çok elli oyun) ----
+  /// Maç biçimi (hedef puan ya da el sayısı); null: maç modu yok.
+  MatchFormat? get matchFormat => null;
+
+  /// Bitmiş bir elin maç puanları (koltuk başına).
+  List<int> matchPoints(TableState s) => finalScores(s);
+
+  /// Maçın [deal]. eli için kurallar (ör. Aşamalı Remi'de el başına aşama).
+  TableRules rulesForDeal(int deal) => this;
 }

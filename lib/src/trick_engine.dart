@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:studio_core/core/rng.dart';
+import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
 
@@ -27,6 +28,12 @@ class TrickState {
   int bidTurns = 0;
   int extra = 0; // oyuna özel (ör. kupa kırıldı mı)
   int lastWinner = -1;
+
+  /// Maç modunda oynanan el (ör. herkes pas derse yeniden dağıtılır).
+  bool matchPlay = false;
+
+  /// Oyuna özel ek sayaç (ör. 29'da kozu bu elde açtıran koltuk).
+  int aux = -1;
 
   TrickState({
     required this.seats,
@@ -69,7 +76,9 @@ class TrickState {
       ..contract = contract
       ..bidTurns = bidTurns
       ..extra = extra
-      ..lastWinner = lastWinner;
+      ..lastWinner = lastWinner
+      ..matchPlay = matchPlay
+      ..aux = aux;
     return c;
   }
 
@@ -86,7 +95,7 @@ class TrickState {
         'v': [for (final v in voids) v.toList()],
         'p': played,
         'w': winners,
-        'x': [leader, turn, dealer, trump, phase.index, declarer, contract, bidTurns, extra, lastWinner],
+        'x': [leader, turn, dealer, trump, phase.index, declarer, contract, bidTurns, extra, lastWinner, matchPlay ? 1 : 0, aux],
       };
 
   static List<KCard> _l(Object? o) => [for (final c in o as List) (c as num).toInt()];
@@ -122,7 +131,9 @@ class TrickState {
       ..contract = x[6]
       ..bidTurns = x[7]
       ..extra = x[8]
-      ..lastWinner = x[9];
+      ..lastWinner = x[9]
+      ..matchPlay = x.length > 10 && x[10] == 1
+      ..aux = x.length > 11 ? x[11] : -1;
     return s;
   }
 
@@ -185,6 +196,9 @@ abstract class TrickRules {
   }
 
   bool biddingOver(TrickState s) => s.bidTurns >= seats;
+
+  /// İhale düğmelerinin üstündeki soru.
+  String bidPrompt(TrickState s, String lang) => Strings.tx(lang, 'İhalen?', 'Your bid?');
 
   /// İhale bitince çağrılır: koz ve ilk eli belirleyip oyuna geçer.
   void finishBidding(TrickState s) => startPlay(s);
@@ -291,4 +305,62 @@ abstract class TrickRules {
 
   /// El devam ederken ekranda gösterilecek kısa durum (ör. "İhale: 7").
   String status(TrickState s, String lang) => '';
+
+  // ---- oyun sırasında kartsız hamleler (ör. 29'da "koz açtır") ----
+  List<int> playActions(TrickState s, int seat) => const [];
+  String playActionLabel(int action, String lang) => '$action';
+  void applyPlayAction(TrickState s, int seat, int action) {}
+
+  /// Yapay zekânın kartsız hamle kararı (null: kart oyna).
+  int? aiPlayAction(TrickState s, int seat, SeededRandom r) => null;
+
+  // ---- maç (çok elli oyun) ----
+  /// Maç biçimi (hedef puan ya da el sayısı); null: maç modu yok.
+  MatchFormat? get matchFormat => null;
+
+  /// Bitmiş bir elin maç puanları (koltuk başına; ortaklıkta eşler aynı).
+  List<int> matchPoints(TrickState s) => handScores(s);
+
+  /// Maçın [deal]. eli için kurallar (ör. Oh Hell'de el büyüklüğü değişir).
+  TrickRules rulesForDeal(int deal) => this;
+
+  /// El oynanmadan bitti mi (herkes pas: yeniden dağıtılır).
+  bool thrownIn(TrickState s) => s.phase == TrickPhase.over && s.played.isEmpty;
+}
+
+/// Bir maçın bitiş koşulu: hedef puan, sabit el sayısı ya da ikisi.
+class MatchFormat {
+  /// Bu puana ulaşan taraf olunca maç biter (0: yok).
+  final int target;
+
+  /// Hedef yoksa oynanacak el sayısı; hedefle birlikte verilirse üst sınır.
+  final int deals;
+
+  /// En az puan kazanır (Hearts, Konken …).
+  final bool lowWins;
+
+  /// Bu kadar eksiye düşen taraf maçı kaybeder (29: −6).
+  final int loseAt;
+
+  const MatchFormat({this.target = 0, this.deals = 0, this.lowWins = false, this.loseAt = 0});
+
+  /// Toplamlara göre sonuç: null sürüyor, -1 berabere, yoksa kazanan taraf.
+  int? outcome(List<int> totals, int played) {
+    final n = totals.length;
+    if (loseAt > 0 && n == 2) {
+      final down = [for (var i = 0; i < n; i++) totals[i] <= -loseAt];
+      if (down[0] != down[1]) return down[0] ? 1 : 0;
+    }
+    final reached = target > 0 && totals.any((t) => t >= target);
+    final cap = deals > 0 ? deals : (target > 0 ? 200 : 0);
+    final done = target > 0 ? (reached || played >= cap) : (deals > 0 && played >= deals);
+    if (!done) return null;
+    var best = 0;
+    for (var i = 1; i < n; i++) {
+      if (lowWins ? totals[i] < totals[best] : totals[i] > totals[best]) best = i;
+    }
+    final ties = [for (var i = 0; i < n; i++) if (totals[i] == totals[best]) i].length;
+    if (ties > 1) return target > 0 && played < cap ? null : -1;
+    return best;
+  }
 }

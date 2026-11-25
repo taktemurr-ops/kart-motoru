@@ -71,6 +71,9 @@ int cribHandScore(List<KCard> hand, KCard starter, {bool crib = false}) {
 class CribbageRules extends TableRules {
   const CribbageRules();
 
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 121);
+
   // piles: 0 deste, 1 krib (kapalı), 2 açılan kart, 3 sayı dizisi, 4 oynananlar, 5/6 gösterilecek eller
   // vars: 0 aşama (0 krib, 1 sayma, 2 bitti), 1 toplam, 2 son kart atan, 3 dağıtan, 4 "go" sayısı
   static const _cribLabel = [

@@ -9,6 +9,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'match_view.dart';
 import 'tile_painter.dart';
 import 'cards.dart';
 import 'table_ai.dart';
@@ -17,15 +18,30 @@ import 'table_rules.dart';
 
 /// Sıra tabanlı masa oyunlarının ortak ekranı: rakip koltukları, ortadaki
 /// yığınlar, oyuncunun eli ve kartsız hamle düğmeleri.
-class TableView extends StatefulWidget {
+///
+/// "Maç" modunda (ve isteğe bağlı olarak çok oyunculu masada) hedef puana
+/// kadar çok elli maç oynanır ([MatchView]).
+class TableView extends StatelessWidget {
   final PlayContext ctx;
   const TableView({super.key, required this.ctx});
 
   @override
-  State<TableView> createState() => _TableViewState();
+  Widget build(BuildContext context) => MatchView.wants(ctx) ? MatchView(ctx: ctx) : TableHandView(ctx: ctx);
 }
 
-class _TableViewState extends State<TableView> {
+/// Masa oyunlarının tek el ekranı.
+class TableHandView extends StatefulWidget {
+  final PlayContext ctx;
+
+  /// Maçta: el bitince sonuç ekranı yerine çağrılır (puanları maç sayar).
+  final void Function(TableState end)? onHandOver;
+  const TableHandView({super.key, required this.ctx, this.onHandOver});
+
+  @override
+  State<TableHandView> createState() => _TableViewState();
+}
+
+class _TableViewState extends State<TableHandView> {
   late TableLevel level;
   late TableState s;
   late List<TableAI> ais;
@@ -223,6 +239,11 @@ class _TableViewState extends State<TableView> {
     if (_ended) return;
     _ended = true;
     _timer?.cancel();
+    final over = widget.onHandOver;
+    if (over != null) {
+      over(s);
+      return;
+    }
     if (_multi) {
       final sc = rules.finalScores(s);
       var w = 0;

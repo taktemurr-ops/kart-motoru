@@ -6,6 +6,7 @@ import 'package:studio_core/core/stats.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'cards.dart';
+import 'kart_texts.dart';
 import 'table_engine.dart';
 import 'table_rules.dart';
 import 'trick_games5.dart';
@@ -183,8 +184,13 @@ class TrixGameRules extends GameRules<Object> {
   @override
   List<String> get optionalMechanics => const [];
 
+  /// Maç modu: dört krallık × beş sözleşme (krallığın sahibi seçer).
   @override
-  List<GameModeId> get modes => const [GameModeId.campaign, GameModeId.daily, GameModeId.weekly, GameModeId.challenge];
+  List<GameModeId> get modes =>
+      const [GameModeId.campaign, GameModeId.daily, GameModeId.weekly, GameModeId.challenge, GameModeId.endless];
+
+  @override
+  Map<String, List<String>> get strings => kMatchModeStrings;
 
   @override
   List<GameStat> get gameStats => const [

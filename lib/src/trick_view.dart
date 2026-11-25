@@ -11,21 +11,36 @@ import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
 import 'cards.dart';
+import 'match_view.dart';
 import 'trick_ai.dart';
 import 'trick_engine.dart';
 import 'trick_rules.dart';
 
-/// Rakipli kart oyunlarının ortak masası: dört (ya da daha az) koltuk, ortada
-/// el, altta oyuncunun eli; ihale düğmeleri; ipucu ve geri al.
-class TrickView extends StatefulWidget {
+/// Rakipli kart oyunlarının ekranı: bölüm modunda tek el ([TrickHandView]);
+/// "Maç" modunda (ve isteğe bağlı olarak çok oyunculu masada) hedef puana
+/// kadar çok elli maç ([MatchView]).
+class TrickView extends StatelessWidget {
   final PlayContext ctx;
   const TrickView({super.key, required this.ctx});
 
   @override
-  State<TrickView> createState() => _TrickViewState();
+  Widget build(BuildContext context) => MatchView.wants(ctx) ? MatchView(ctx: ctx) : TrickHandView(ctx: ctx);
 }
 
-class _TrickViewState extends State<TrickView> {
+/// Rakipli kart oyunlarının ortak masası: dört (ya da daha az) koltuk, ortada
+/// el, altta oyuncunun eli; ihale düğmeleri; ipucu ve geri al.
+class TrickHandView extends StatefulWidget {
+  final PlayContext ctx;
+
+  /// Maçta: el bitince sonuç ekranı yerine çağrılır (puanları maç sayar).
+  final void Function(TrickState end)? onHandOver;
+  const TrickHandView({super.key, required this.ctx, this.onHandOver});
+
+  @override
+  State<TrickHandView> createState() => _TrickViewState();
+}
+
+class _TrickViewState extends State<TrickHandView> {
   late TrickLevel level;
   late TrickState s;
   late List<TrickAI> ais;
@@ -156,6 +171,13 @@ class _TrickViewState extends State<TrickView> {
         if (rules.biddingOver(s)) rules.finishBidding(s);
         setState(() {});
       } else {
+        final act = ais[seat].action(s, seat);
+        if (act != null) {
+          if (mt != null) unawaited(mt.send('a:$act', asSeat: seat));
+          rules.applyPlayAction(s, seat, act);
+          setState(() {});
+          continue;
+        }
         final c = ais[seat].play(s, seat);
         if (mt != null) unawaited(mt.send('c:${rules.legalPlays(s, seat).indexOf(c)}', asSeat: seat));
         await _playCard(seat, c);
@@ -178,6 +200,12 @@ class _TrickViewState extends State<TrickView> {
       if (!rules.legalBids(s, seat).contains(v)) return false;
       rules.applyBid(s, seat, v);
       if (rules.biddingOver(s)) rules.finishBidding(s);
+      setState(() {});
+      return true;
+    }
+    if (mv.startsWith('a:') && s.phase == TrickPhase.play) {
+      if (!rules.playActions(s, seat).contains(v)) return false;
+      rules.applyPlayAction(s, seat, v);
       setState(() {});
       return true;
     }
@@ -230,6 +258,19 @@ class _TrickViewState extends State<TrickView> {
     _advance();
   }
 
+  /// Kartsız hamle (ör. 29'da "koz açtır").
+  void _humanAction(int a) {
+    if (_ended || _busy || !_myTurn || s.phase != TrickPhase.play) return;
+    final seat = s.turn;
+    if (!rules.playActions(s, seat).contains(a)) return;
+    unawaited(_match?.send('a:$a'));
+    _undo.add(s.serialize());
+    rules.applyPlayAction(s, seat, a);
+    ctx.sfx(Sfx.tap);
+    setState(() {});
+    _persist();
+  }
+
   void _humanBid(int bid) {
     if (_ended || _busy || !_myTurn || s.phase != TrickPhase.bidding) return;
     final seat = s.turn;
@@ -274,6 +315,11 @@ class _TrickViewState extends State<TrickView> {
     if (_ended) return;
     _ended = true;
     _timer?.cancel();
+    final over = widget.onHandOver;
+    if (over != null) {
+      over(s);
+      return;
+    }
     if (_multi) {
       final u = [for (var i = 0; i < s.seats; i++) rules.utility(s, i)];
       var w = 0;
@@ -444,7 +490,7 @@ class _TrickViewState extends State<TrickView> {
                   child: Padding(
                     padding: const EdgeInsets.all(10),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text(Strings.tx(ctx.lang, 'İhalen?', 'Your bid?'), style: Theme.of(context).textTheme.titleMedium),
+                      Text(rules.bidPrompt(s, ctx.lang), style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
                       Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
                         for (final b in rules.legalBids(s, s.turn))
@@ -462,6 +508,18 @@ class _TrickViewState extends State<TrickView> {
               ),
           ]),
         ),
+        if (s.phase == TrickPhase.play && _myTurn && !_busy && rules.playActions(s, s.turn).isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Wrap(spacing: 8, alignment: WrapAlignment.center, children: [
+              for (final a in rules.playActions(s, s.turn))
+                FilledButton.icon(
+                  icon: const Icon(Icons.visibility),
+                  onPressed: () => _humanAction(a),
+                  label: Text(rules.playActionLabel(a, ctx.lang)),
+                ),
+            ]),
+          ),
         _seatBadge(me),
         const SizedBox(height: 4),
         // Oyuncunun eli
