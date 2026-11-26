@@ -183,6 +183,9 @@ abstract class TableRules {
   /// Çizim: 0 kart, 1 okey taşı, 2 domino, 3 mahjong (tile_painter.dart).
   int get tileStyle => 0;
 
+  /// İspanyol destesi çizimi (kılıç, kupa, altın, sopa).
+  bool get spanishDeck => false;
+
   /// Kart/taş yüksekliğinin genişliğe oranı.
   double get tileAspect => 1.4;
 
