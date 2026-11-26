@@ -349,7 +349,9 @@ class _TableViewState extends State<TableHandView> {
     final cards = s.hands[me];
     final k = cards.length;
     final perRow = (k + 1) ~/ 2;
-    final tw = math.min(60.0, math.min((w - 24) / (perRow * 1.04), h * 0.085));
+    // Büyük yazıda üst/alt satırlar uzar: kısa ekranda istaka biraz küçülür.
+    final ts = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+    final tw = math.min(60.0, math.min((w - 24) / (perRow * 1.04), h * 0.085 / ts));
     final th = tw * rules.tileAspect;
     final rowH = th + 10;
     Widget row(int from, int to) => SizedBox(
