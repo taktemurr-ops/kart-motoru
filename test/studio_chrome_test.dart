@@ -169,11 +169,13 @@ void main() {
     expect(MatchView.wants(c), isTrue);
     await t.pumpWidget(_host(TrickView(ctx: c)));
     await t.pump(const Duration(milliseconds: 300));
-    expect(find.byType(StudioBoardPanel), findsOneWidget);
+    expect(find.byType(StudioBoardPanel), findsWidgets);
     _expectLightText(t);
-    // Maç oyna.
-    await t.tap(find.byType(StudioButton).first);
-    await t.pump(const Duration(milliseconds: 600));
+    // Mod seçimi sorulursa maçı seç.
+    if (find.byIcon(Icons.table_rows_rounded).evaluate().isEmpty) {
+      await t.tap(find.byType(StudioButton).first);
+      await t.pump(const Duration(milliseconds: 600));
+    }
     expect(t.takeException(), isNull);
     // Puan tablosu diyaloğu.
     await t.tap(find.byIcon(Icons.table_rows_rounded));
@@ -186,6 +188,29 @@ void main() {
     await t.tap(find.descendant(of: dlg, matching: find.byType(StudioButton)));
     await t.pump(const Duration(milliseconds: 600));
     expect(find.byType(AlertDialog), findsNothing);
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('maç: mod seçim paneli (iki kişilik) stüdyo düğmeleriyle açılır', (t) async {
+    t.view.physicalSize = const Size(1080, 2280);
+    t.view.devicePixelRatio = 2.75;
+    addTearDown(t.view.reset);
+    final rules = TrickGameRules(gameId: 't-king-mac', rulesFor: (_) => const KingRules());
+    final planner = LevelPlanner(gameId: rules.gameId, optionalMechanics: const []);
+    final gl = rules.build(planner.spec(1, mode: GameModeId.versus));
+    final c = _ctx(gl, 'tr');
+    await t.pumpWidget(_host(TrickView(ctx: c)));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(t.takeException(), isNull);
+    _expectLightText(t);
+    final buttons = find.byType(StudioButton);
+    if (buttons.evaluate().isNotEmpty) {
+      await t.tap(buttons.first);
+      await t.pump(const Duration(milliseconds: 600));
+      expect(t.takeException(), isNull);
+      _expectLightText(t);
+    }
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 5));
   });

@@ -122,7 +122,7 @@ class _TrailViewState extends State<TrailView> {
         ? Strings.pick(_tStart, ctx.lang)
         : (game.stuck ? Strings.pick(_tStuck, ctx.lang) : '${game.path.length} / ${level.size}');
     return LayoutBuilder(builder: (context, cons) {
-      final w = cons.maxWidth - 16, h = cons.maxHeight - 130;
+      final w = cons.maxWidth - 16, h = cons.maxHeight - 140;
       _gap = 6;
       _cw = math.min((w - _gap * (level.cols - 1)) / level.cols, ((h - _gap * (level.rows - 1)) / level.rows) / 1.4);
       _cw = math.max(18, _cw);

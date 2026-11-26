@@ -173,7 +173,8 @@ class _SquareViewState extends State<SquareView> {
     return LayoutBuilder(builder: (context, cons) {
       final tray = game.tray;
       final trayRows = tray.isEmpty ? 0 : 2;
-      final availH = cons.maxHeight - 120;
+      // Üst bilgi hapı, masa çerçevesi ve yuvarlak düğmeler için pay.
+      final availH = cons.maxHeight - 136;
       final gridH = availH * (trayRows == 0 ? 0.92 : 0.66);
       final chip = 30.0;
       var cw = math.min((cons.maxWidth - 24 - chip - 8 * n) / n, (gridH - chip - 8 * n) / n / 1.4);
