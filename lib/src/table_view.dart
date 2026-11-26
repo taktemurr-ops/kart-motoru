@@ -402,7 +402,10 @@ class _TableViewState extends State<TableHandView> {
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth, h = cons.maxHeight;
       final n = math.max(1, s.hands[me].length);
-      final cw = math.min(72.0, math.min(w / (n * 0.62 + 0.6), h * 0.15));
+      // Büyük yazıda üst/alt yazı satırları uzar: taşlar biraz küçülür ki
+      // kısa ekranda (320x568) alt sıra kesilmesin.
+      final ts = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
+      final cw = math.min(72.0, math.min(w / (n * 0.62 + 0.6), h * 0.15 / ts));
       final pw = math.min(64.0, w * 0.14);
       return Column(children: [
         Padding(

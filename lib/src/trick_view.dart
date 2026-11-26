@@ -490,7 +490,9 @@ class _TrickViewState extends State<TrickHandView> {
                 child: StudioBoardPanel(
                   margin: const EdgeInsets.all(10),
                   padding: const EdgeInsets.all(12),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  // Çok sayıda teklif kısa ekrana sığmazsa panel kaydırılır.
+                  child: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Text(rules.bidPrompt(s, ctx.lang),
                         textAlign: TextAlign.center,
                         style: const TextStyle(color: kStudioText, fontSize: 17, fontWeight: FontWeight.w900)),
@@ -504,6 +506,7 @@ class _TrickViewState extends State<TrickHandView> {
                         ),
                     ]),
                   ]),
+                  ),
                 ),
               ),
           ]),
