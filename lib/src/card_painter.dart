@@ -14,11 +14,16 @@ class CardStyle {
   final Color backA, backB;
   final bool fourColor;
   final bool colorBlind;
+
+  /// İspanyol destesi: maça → kılıç, kupa → kupa, karo → altın, sinek →
+  /// sopa; resimliler 10 (uşak), 11 (atlı), 12 (kral).
+  final bool spanish;
   const CardStyle({
     this.backA = const Color(0xFF1F5E8C),
     this.backB = const Color(0xFF2BB3B1),
     this.fourColor = false,
     this.colorBlind = false,
+    this.spanish = false,
   });
 
   static const ink = Color(0xFF1E2430);
@@ -28,6 +33,7 @@ class CardStyle {
   static const paper = Color(0xFFFBF7EE);
 
   Color suitColor(int suit) {
+    if (spanish) return const [Color(0xFF2B5FA8), Color(0xFFC0392B), Color(0xFFB8860B), Color(0xFF2E7D32)][suit];
     if (fourColor || colorBlind) {
       return const [ink, red, orange, green][suit];
     }
@@ -85,10 +91,71 @@ Path suitPath(int suit) {
   return p;
 }
 
+/// İspanyol destesinin renk simgeleri (birim kare): 0 kılıç (espadas),
+/// 1 kupa (copas), 2 altın (oros), 3 sopa (bastos).
+Path spanishSuitPath(int suit) {
+  final p = Path();
+  switch (suit) {
+    case kSpades: // kılıç: ince uzun bıçak, balçak ve kabza
+      p
+        ..moveTo(0.5, 0.02)
+        ..lineTo(0.58, 0.14)
+        ..lineTo(0.57, 0.68)
+        ..lineTo(0.43, 0.68)
+        ..lineTo(0.42, 0.14)
+        ..close()
+        ..addRRect(RRect.fromLTRBR(0.22, 0.66, 0.78, 0.74, const Radius.circular(0.04)))
+        ..addRect(const Rect.fromLTRB(0.45, 0.74, 0.55, 0.9))
+        ..addOval(Rect.fromCircle(center: const Offset(0.5, 0.93), radius: 0.06));
+    case kHearts: // kupa: kadeh
+      p
+        ..moveTo(0.16, 0.1)
+        ..lineTo(0.84, 0.1)
+        ..quadraticBezierTo(0.84, 0.52, 0.56, 0.58)
+        ..lineTo(0.56, 0.8)
+        ..quadraticBezierTo(0.74, 0.84, 0.78, 0.94)
+        ..lineTo(0.22, 0.94)
+        ..quadraticBezierTo(0.26, 0.84, 0.44, 0.8)
+        ..lineTo(0.44, 0.58)
+        ..quadraticBezierTo(0.16, 0.52, 0.16, 0.1)
+        ..close();
+    case kDiamonds: // altın: halkalı sikke
+      p
+        ..fillType = PathFillType.evenOdd
+        ..addOval(Rect.fromCircle(center: const Offset(0.5, 0.5), radius: 0.46))
+        ..addOval(Rect.fromCircle(center: const Offset(0.5, 0.5), radius: 0.34))
+        ..addOval(Rect.fromCircle(center: const Offset(0.5, 0.5), radius: 0.14));
+    default: // sopa: boğumlu değnek
+      p
+        ..moveTo(0.36, 0.04)
+        ..quadraticBezierTo(0.5, 0.0, 0.64, 0.04)
+        ..lineTo(0.6, 0.3)
+        ..quadraticBezierTo(0.66, 0.34, 0.6, 0.4)
+        ..lineTo(0.57, 0.62)
+        ..quadraticBezierTo(0.63, 0.66, 0.57, 0.7)
+        ..lineTo(0.55, 0.96)
+        ..lineTo(0.45, 0.96)
+        ..lineTo(0.43, 0.7)
+        ..quadraticBezierTo(0.37, 0.66, 0.43, 0.62)
+        ..lineTo(0.4, 0.4)
+        ..quadraticBezierTo(0.34, 0.34, 0.4, 0.3)
+        ..close();
+  }
+  return p;
+}
+
+/// İspanyol destesinde resimlilerin yazısı.
+String spanishRankLabel(int rank) => switch (rank) {
+      11 => '10',
+      12 => '11',
+      13 => '12',
+      _ => '$rank',
+    };
+
 final _suitCache = <int, Path>{};
 
-void paintSuit(Canvas c, int suit, Rect r, Color color) {
-  final base = _suitCache.putIfAbsent(suit, () => suitPath(suit));
+void paintSuit(Canvas c, int suit, Rect r, Color color, {bool spanish = false}) {
+  final base = _suitCache.putIfAbsent(spanish ? suit + 10 : suit, () => spanish ? spanishSuitPath(suit) : suitPath(suit));
   final m = Float64List.fromList([r.width, 0, 0, 0, 0, r.height, 0, 0, 0, 0, 1, 0, r.left, r.top, 0, 1]);
   c.drawPath(base.transform(m), Paint()..color = color);
 }
@@ -196,11 +263,11 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
   final col = s.suitColor(suit);
   // Köşe: değer + küçük simge (sol üst), ters köşe (sağ alt).
   final fs = w * 0.30;
-  final lab = _label(rankLabel(rank), fs, col);
+  final lab = _label((s.spanish ? spanishRankLabel(rank) : rankLabel(rank)), fs, col);
   final lx = r.left + w * 0.07, ly = r.top + w * 0.05;
   lab.paint(c, Offset(lx, ly));
   final small = w * 0.20;
-  paintSuit(c, suit, Rect.fromLTWH(lx + (lab.width - small) / 2, ly + lab.height + w * 0.02, small, small), col);
+  paintSuit(c, suit, Rect.fromLTWH(lx + (lab.width - small) / 2, ly + lab.height + w * 0.02, small, small), col, spanish: s.spanish);
   c.save();
   c.translate(r.right, r.bottom);
   c.rotate(math.pi);
@@ -218,11 +285,11 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
           ..color = col.withValues(alpha: 0.55)
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(1, w * 0.02));
-    final big = _label(rankLabel(rank), body.height * 0.42, col, w: FontWeight.w900);
+    final big = _label((s.spanish ? spanishRankLabel(rank) : rankLabel(rank)), body.height * 0.42, col, w: FontWeight.w900);
     big.paint(c, body.center - Offset(big.width / 2, big.height / 2));
     final g = body.width * 0.28;
-    paintSuit(c, suit, Rect.fromCenter(center: Offset(body.center.dx, body.top + g * 0.75), width: g, height: g), col);
-    paintSuit(c, suit, Rect.fromCenter(center: Offset(body.center.dx, body.bottom - g * 0.75), width: g, height: g), col);
+    paintSuit(c, suit, Rect.fromCenter(center: Offset(body.center.dx, body.top + g * 0.75), width: g, height: g), col, spanish: s.spanish);
+    paintSuit(c, suit, Rect.fromCenter(center: Offset(body.center.dx, body.bottom - g * 0.75), width: g, height: g), col, spanish: s.spanish);
     // Köşe süsleri
     final d = w * 0.05;
     for (final o in [body.topLeft, body.topRight, body.bottomLeft, body.bottomRight]) {
@@ -237,7 +304,7 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
     }
   } else if (rank == 1 || w < 46) {
     final g = math.min(body.width, body.height) * (rank == 1 ? 0.95 : 0.75);
-    paintSuit(c, suit, Rect.fromCenter(center: body.center.translate(0, r.height * 0.04), width: g, height: g), col);
+    paintSuit(c, suit, Rect.fromCenter(center: body.center.translate(0, r.height * 0.04), width: g, height: g), col, spanish: s.spanish);
   } else {
     // Gerçek iskambil gibi: değer kadar simge, klasik dizilişte; alt yarıdakiler ters.
     final pips = _pips[rank.clamp(2, 10)]!;
@@ -249,10 +316,10 @@ void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
         c.save();
         c.translate(o.dx, o.dy);
         c.rotate(math.pi);
-        paintSuit(c, suit, Rect.fromCenter(center: Offset.zero, width: g, height: g), col);
+        paintSuit(c, suit, Rect.fromCenter(center: Offset.zero, width: g, height: g), col, spanish: s.spanish);
         c.restore();
       } else {
-        paintSuit(c, suit, Rect.fromCenter(center: o, width: g, height: g), col);
+        paintSuit(c, suit, Rect.fromCenter(center: o, width: g, height: g), col, spanish: s.spanish);
       }
     }
   }

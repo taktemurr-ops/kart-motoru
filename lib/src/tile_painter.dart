@@ -8,7 +8,7 @@ import 'cards.dart';
 ///
 /// Okey: 0..103 = deste * 52 + renk * 13 + (sayı - 1); 104, 105 sahte okey.
 /// Renk sırası: 0 sarı, 1 mavi, 2 siyah, 3 kırmızı.
-/// Domino: 1000 + a * 7 + b (a ≤ b, 0..6).
+/// Domino: 1000 + a * 7 + b (a ≤ b, 0..6); çift dokuzlu 1200 + a * 10 + b.
 /// Mahjong: 2000 + tür * 4 + kopya. Tür 0..8 daire, 9..17 bambu,
 /// 18..26 karakter, 27..30 rüzgâr (doğu, güney, batı, kuzey), 31..33 ejder
 /// (kırmızı, yeşil, beyaz).
@@ -21,11 +21,22 @@ int okeyNumber(KCard t) => t % 13 + 1;
 
 KCard dominoTile(int a, int b) => a <= b ? 1000 + a * 7 + b : 1000 + b * 7 + a;
 
+/// Çift dokuzlu takım (0..9): 1200 + a * 10 + b (a ≤ b).
+KCard dominoTile9(int a, int b) => a <= b ? 1200 + a * 10 + b : 1200 + b * 10 + a;
+
 /// Sırada ters duran domino: +100 (çizimde alt yarı üste gelir).
-KCard dominoFlipped(KCard t) => t >= 1100 ? t - 100 : t + 100;
-KCard dominoBase(KCard t) => t >= 1100 ? t - 100 : t;
-int dominoA(KCard t) => (dominoBase(t) - 1000) ~/ 7;
-int dominoB(KCard t) => (dominoBase(t) - 1000) % 7;
+bool dominoIsFlipped(KCard t) => (t >= 1100 && t < 1200) || (t >= 1300 && t < 1400);
+KCard dominoFlipped(KCard t) => dominoIsFlipped(t) ? t - 100 : t + 100;
+KCard dominoBase(KCard t) => dominoIsFlipped(t) ? t - 100 : t;
+int dominoA(KCard t) {
+  final b = dominoBase(t);
+  return b >= 1200 ? (b - 1200) ~/ 10 : (b - 1000) ~/ 7;
+}
+
+int dominoB(KCard t) {
+  final b = dominoBase(t);
+  return b >= 1200 ? (b - 1200) % 10 : (b - 1000) % 7;
+}
 
 /// Çiçek ve mevsim taşları: 2200..2207 (tür 34..41).
 int mjKind(KCard t) => t >= 2200 ? 34 + t - 2200 : (t - 2000) ~/ 4;
@@ -149,8 +160,11 @@ void _pips(Canvas c, Rect half, int n) {
     4: [(0.27, 0.27), (0.73, 0.27), (0.27, 0.73), (0.73, 0.73)],
     5: [(0.25, 0.25), (0.75, 0.25), (0.5, 0.5), (0.25, 0.75), (0.75, 0.75)],
     6: [(0.27, 0.22), (0.73, 0.22), (0.27, 0.5), (0.73, 0.5), (0.27, 0.78), (0.73, 0.78)],
+    7: [(0.27, 0.22), (0.73, 0.22), (0.27, 0.5), (0.5, 0.5), (0.73, 0.5), (0.27, 0.78), (0.73, 0.78)],
+    8: [(0.22, 0.2), (0.5, 0.2), (0.78, 0.2), (0.22, 0.5), (0.78, 0.5), (0.22, 0.8), (0.5, 0.8), (0.78, 0.8)],
+    9: [(0.22, 0.2), (0.5, 0.2), (0.78, 0.2), (0.22, 0.5), (0.5, 0.5), (0.78, 0.5), (0.22, 0.8), (0.5, 0.8), (0.78, 0.8)],
   };
-  final rad = math.min(half.width, half.height) * 0.1;
+  final rad = math.min(half.width, half.height) * (n > 6 ? 0.085 : 0.1);
   for (final (x, y) in pos[n]!) {
     c.drawCircle(Offset(half.left + x * half.width, half.top + y * half.height), rad, Paint()..color = const Color(0xFF1E2430));
   }
@@ -166,7 +180,7 @@ void _domino(Canvas c, Rect r, KCard t) {
       Paint()
         ..color = const Color(0xFF8C7B57)
         ..strokeWidth = math.max(1, w * 0.04));
-  final flip = t >= 1100;
+  final flip = dominoIsFlipped(t);
   _pips(c, top.deflate(w * 0.06), flip ? dominoB(t) : dominoA(t));
   _pips(c, bottom.deflate(w * 0.06), flip ? dominoA(t) : dominoB(t));
 }

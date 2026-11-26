@@ -207,3 +207,60 @@ class DominoRules extends TableRules {
   String status(TableState s, String lang) =>
       s.piles[1].isEmpty ? '' : '◀ ${s.vars[0]}   ·   ${s.vars[1]} ▶';
 }
+
+/// Eşli domino (Karayipler ve Latin Amerika usulü): dört kişi, karşılıklı
+/// oturanlar ortak (0+2, 1+3). Çift altılıda bütün taşlar dağıtılır (yedişer);
+/// çift dokuzluda onar taş dağıtılır, kalanlar kapalı kalır. Yığından çekilmez:
+/// ekleyemeyen pas geçer. Elini ilk bitiren taraf, rakip ikilinin elinde kalan
+/// noktaları kazanır; kilitlenirse en az noktalı oyuncunun tarafı kazanır.
+/// Maç 200 puana.
+class PartnerDominoRules extends DominoRules {
+  /// Çift dokuzlu takım (55 taş).
+  final bool nine;
+  const PartnerDominoRules({this.nine = false, int opener = -1}) : super(4, opener);
+
+  @override
+  bool get partnerships => true;
+
+  @override
+  MatchFormat get matchFormat => const MatchFormat(target: 200);
+
+  @override
+  TableRules rulesForMatch(int deal, List<List<int>> history) => PartnerDominoRules(nine: nine, opener: lastRowWinner(history));
+
+  @override
+  List<KCard> deck() => nine ? [for (var a = 0; a <= 9; a++) for (var b = a; b <= 9; b++) dominoTile9(a, b)] : super.deck();
+
+  @override
+  int get handSize => nine ? 10 : 7;
+
+  @override
+  List<TAction> legalActions(TableState s) {
+    final l = super.legalActions(s);
+    // Yığından çekilmez: ekleyemeyen pas geçer.
+    if (l.length == 1 && l.first.kind == 1) return const [TAction(2)];
+    return l;
+  }
+
+  @override
+  void _end(TableState s, int winner) {
+    s.over = true;
+    var w = winner;
+    if (w < 0) {
+      var best = 1 << 30;
+      for (var p = 0; p < seats; p++) {
+        final v = pips(s.hands[p]);
+        if (v < best) {
+          best = v;
+          w = p;
+        }
+      }
+    }
+    var total = 0;
+    for (var p = 0; p < seats; p++) {
+      if (p % 2 != w % 2) total += pips(s.hands[p]);
+    }
+    s.scores[w] = total;
+    s.scores[(w + 2) % 4] = total;
+  }
+}

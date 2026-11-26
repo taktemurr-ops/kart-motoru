@@ -283,6 +283,7 @@ class _TableViewState extends State<TableHandView> {
         backA: ctx.pieceColors.isNotEmpty ? ctx.pieceColors[0] : const Color(0xFF1F5E8C),
         backB: ctx.pieceColors.length > 1 ? ctx.pieceColors[1] : const Color(0xFF2BB3B1),
         colorBlind: ctx.colorBlind,
+        spanish: rules.spanishDeck,
       );
 
   Widget _card(KCard c, double w, {bool up = true, bool dim = false, bool hl = false}) => SizedBox(
