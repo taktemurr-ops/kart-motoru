@@ -208,6 +208,9 @@ class TileStrip extends StatelessWidget {
   }
 }
 
+/// Dar ekranda ve büyük yazıda taşmasın: gerekirse küçülür.
+Widget _fit(Widget child) => FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: child);
+
 class _Feedback extends StatelessWidget {
   final String? text;
   final bool good;
@@ -350,7 +353,7 @@ class _PickGroupsViewState extends State<_PickGroupsView> {
               ]),
             ),
           ),
-        StudioTag(icon: Icons.functions_rounded, text: widget.t('value', {'n': total})),
+        _fit(StudioTag(icon: Icons.functions_rounded, text: widget.t('value', {'n': total}))),
         _Feedback(msg, good),
         if (!solved)
           Wrap(spacing: 10, runSpacing: 8, children: [
@@ -540,19 +543,17 @@ class _PracticeViewState extends State<_PracticeView> {
     return StudioPanel(
       margin: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (indicator != null || o != null)
-          Row(children: [
-            Text('${widget.t('indicator')}: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+        Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (indicator != null || o != null) ...[
+            Text('${widget.t('indicator')}:', style: const TextStyle(fontWeight: FontWeight.w700)),
             SizedBox(
               width: 34,
               height: 47,
               child: CustomPaint(painter: _TileP(indicator ?? _indicatorFor(o!.okeyKind), kTileOkey, true, false)),
             ),
-            const SizedBox(width: 10),
-            if (o == null) StudioTag(icon: Icons.layers_rounded, text: widget.t('draws_left', {'n': stockLeft})),
-          ])
-        else
-          StudioTag(icon: Icons.layers_rounded, text: widget.t('draws_left', {'n': stockLeft})),
+          ],
+          if (o == null) _fit(StudioTag(icon: Icons.layers_rounded, text: widget.t('draws_left', {'n': stockLeft}))),
+        ]),
         const SizedBox(height: 10),
         TileStrip(
           tiles: hand,
@@ -572,12 +573,12 @@ class _PracticeViewState extends State<_PracticeView> {
         ),
         if (o != null) ...[
           const SizedBox(height: 8),
-          StudioTag(
+          _fit(StudioTag(
               icon: Icons.functions_rounded,
               text: widget.t('value', {'n': () {
                 final v = o.value([for (final i in openSel) o.hand[i]]);
                 return v < 0 ? '–' : '$v';
-              }()})),
+              }()}))),
         ],
         _Feedback(msg, good),
         Wrap(spacing: 10, runSpacing: 8, children: [
