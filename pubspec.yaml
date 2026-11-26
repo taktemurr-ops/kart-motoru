@@ -12,7 +12,7 @@ dependencies:
   studio_core:
     git:
       url: https://github.com/taktemurr-ops/studio-core
-      ref: 92d96c2ed9c0ab3fe539aeafcf8c61c3ca8f78ce
+      ref: 8cb935c63a86ca3e5fb38758edd5bb8ec44dccdd
 
 dev_dependencies:
   flutter_test:

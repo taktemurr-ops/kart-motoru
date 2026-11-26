@@ -10,6 +10,7 @@ import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
 import 'match_view.dart';
+import 'studio_chrome.dart';
 import 'tile_painter.dart';
 import 'cards.dart';
 import 'table_ai.dart';
@@ -302,23 +303,12 @@ class _TableViewState extends State<TableHandView> {
   }
 
   Widget _badge(int seat) {
-    final cs = Theme.of(context).colorScheme;
     final active = s.turn == seat && !s.over;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: active ? cs.primaryContainer : cs.surfaceContainerHigh.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: active ? cs.primary : Colors.transparent, width: 2),
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(_seatName(seat), style: const TextStyle(fontWeight: FontWeight.w700)),
-        Text(
-            '${seat != me ? '🂠${s.hands[seat].length}  ' : ''}'
-            '${Strings.tx(ctx.lang, 'Puan', 'Points')}: ${rules.finalScores(s)[seat]}',
-            style: const TextStyle(fontSize: 12)),
-      ]),
+    return StudioSeatBadge(
+      title: _seatName(seat),
+      active: active,
+      detail: '${seat != me ? '🂠${s.hands[seat].length}  ' : ''}'
+          '${Strings.tx(ctx.lang, 'Puan', 'Points')}: ${rules.finalScores(s)[seat]}',
     );
   }
 
@@ -348,7 +338,7 @@ class _TableViewState extends State<TableHandView> {
     return Column(mainAxisSize: MainAxisSize.min, children: [
       body,
       const SizedBox(height: 2),
-      Text('$label · ${p.length}', style: Theme.of(context).textTheme.labelSmall),
+      Text('$label · ${p.length}', style: const TextStyle(color: kStudioTextDim, fontSize: 11.5, fontWeight: FontWeight.w700)),
     ]);
   }
 
@@ -398,7 +388,7 @@ class _TableViewState extends State<TableHandView> {
   }
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: _build(context));
+  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     final legal = _isLocal(s.turn) && s.turn == me && !s.over && !_busy && !_cover ? rules.legalActions(s) : const <TAction>[];
@@ -413,23 +403,26 @@ class _TableViewState extends State<TableHandView> {
       final n = math.max(1, s.hands[me].length);
       final cw = math.min(72.0, math.min(w / (n * 0.62 + 0.6), h * 0.15));
       final pw = math.min(64.0, w * 0.14);
-      // Koyu masa zemininde üst bilgiler açık renkle yazılır (okunurluk).
-      final bg = ctx.background;
-      final dark = bg.isNotEmpty && bg.map((c) => c.computeLuminance()).reduce((a, b) => a + b) / bg.length < 0.3;
-      final fg = dark ? const Color(0xFFF5EFE6) : null;
-      final fgDim = dark ? const Color(0xCCF5EFE6) : null;
       return Column(children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Row(children: [
             Expanded(
                 child: Text(level.goal.text(rules, s, ctx.lang),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg), maxLines: 2, overflow: TextOverflow.ellipsis)),
-            Icon(Icons.timer_outlined, size: 18, color: fg),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}', style: TextStyle(color: fg)),
+                    style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w800, fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 8),
+            StudioTag(
+              icon: Icons.timer_outlined,
+              text: '${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}',
+            ),
           ]),
         ),
-        if (status.isNotEmpty) Text(status, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: fgDim), textAlign: TextAlign.center),
+        if (status.isNotEmpty)
+          Text(status,
+              style: const TextStyle(color: kStudioTextDim, fontSize: 12.5, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Wrap(spacing: 8, runSpacing: 6, alignment: WrapAlignment.center, children: [
@@ -447,15 +440,17 @@ class _TableViewState extends State<TableHandView> {
         ),
         if (buttons.isNotEmpty)
           SizedBox(
-            height: 46,
-            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+            height: 52,
+            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), children: [
               for (final a in buttons)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: FilledButton.tonal(
-                    style: _hint == a ? FilledButton.styleFrom(backgroundColor: const Color(0xFFFFC53D)) : null,
-                    onPressed: () => _human(a),
-                    child: Text(rules.actionLabel(a, ctx.lang)),
+                  child: Center(
+                    child: StudioChoice(
+                      hinted: _hint == a,
+                      onPressed: () => _human(a),
+                      label: rules.actionLabel(a, ctx.lang),
+                    ),
                   ),
                 ),
             ]),
@@ -503,13 +498,13 @@ class _TableViewState extends State<TableHandView> {
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            IconButton.filledTonal(
+            StudioRoundAction(
                 onPressed: _ended || _busy || !_isLocal(s.turn) || _cover ? null : _useHint,
-                icon: const Icon(Icons.lightbulb),
+                icon: Icons.lightbulb,
                 tooltip: ctx.t('hint')),
-            IconButton.filledTonal(
+            StudioRoundAction(
                 onPressed: _undo.isNotEmpty && !_busy && !_ended ? _doUndo : null,
-                icon: const Icon(Icons.undo),
+                icon: Icons.undo,
                 tooltip: ctx.t('undo')),
           ]),
         ),
@@ -526,23 +521,7 @@ class _CoverCard extends StatelessWidget {
   const _CoverCard({required this.text, required this.sub, required this.height, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: height,
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(16)),
-        alignment: Alignment.center,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.swap_horiz, color: cs.onPrimaryContainer),
-          Text(text, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, color: cs.onPrimaryContainer)),
-          Text(sub, style: TextStyle(color: cs.onPrimaryContainer)),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => StudioCover(text: text, sub: sub, height: height, onTap: onTap);
 }
 
 class _CardP extends CustomPainter {

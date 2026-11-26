@@ -9,6 +9,7 @@ import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
 import 'trail.dart';
+import 'studio_chrome.dart';
 
 /// Kart Yolu ekranı.
 class TrailView extends StatefulWidget {
@@ -114,7 +115,7 @@ class _TrailViewState extends State<TrailView> {
   Rect _rect(int i) => Rect.fromLTWH(_ox + (i % level.cols) * (_cw + _gap), (i ~/ level.cols) * (_ch + _gap), _cw, _ch);
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: _build(context));
+  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     final info = game.path.isEmpty
@@ -133,15 +134,18 @@ class _TrailViewState extends State<TrailView> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(children: [
             Expanded(
-              child: Text(_ruleText, style: Theme.of(context).textTheme.titleSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+              child: Text(_ruleText,
+                  style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w800, fontSize: 14),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
             ),
-            const Icon(Icons.timer_outlined, size: 18),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
+            const SizedBox(width: 8),
+            StudioTag(icon: Icons.timer_outlined, text: '${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
           ]),
         ),
         Text(info,
             style: TextStyle(
-                fontWeight: FontWeight.w700, color: game.stuck ? Theme.of(context).colorScheme.error : null)),
+                fontWeight: FontWeight.w800, color: game.stuck ? const Color(0xFFFF8A80) : kStudioText)),
         const SizedBox(height: 6),
         Expanded(
           child: Center(
@@ -162,9 +166,8 @@ class _TrailViewState extends State<TrailView> {
         Padding(
           padding: const EdgeInsets.only(bottom: 8, top: 6),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            IconButton.filledTonal(onPressed: _ended ? null : _useHint, icon: const Icon(Icons.lightbulb), tooltip: ctx.t('hint')),
-            IconButton.filledTonal(
-                onPressed: _ended || game.path.isEmpty ? null : _undo, icon: const Icon(Icons.undo), tooltip: ctx.t('undo')),
+            StudioRoundAction(onPressed: _ended ? null : _useHint, icon: Icons.lightbulb, tooltip: ctx.t('hint')),
+            StudioRoundAction(onPressed: _ended || game.path.isEmpty ? null : _undo, icon: Icons.undo, tooltip: ctx.t('undo')),
           ]),
         ),
       ]);

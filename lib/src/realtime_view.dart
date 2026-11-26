@@ -12,6 +12,7 @@ import 'card_painter.dart';
 import 'cards.dart';
 import 'kart_texts.dart';
 import 'realtime.dart';
+import 'studio_chrome.dart';
 
 /// Hızlı kart oyunlarının ortak ekranı.
 ///
@@ -265,23 +266,15 @@ class _RealtimeViewState extends State<RealtimeView> {
     return onTap == null ? body : GestureDetector(onTap: onTap, child: body);
   }
 
-  Widget _badge(String text, {bool active = false}) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: active ? cs.primaryContainer : cs.surfaceContainerHigh.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700)),
-    );
-  }
+  Widget _badge(String text, {bool active = false}) => StudioSeatBadge(title: text, active: active);
 
   String get _you => netYou(ctx.lang);
   String get _rival => _online ? _nameOf(1) : kt(ctx.lang, 'rival');
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => StudioChrome(child: Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth;
       final cw = math.min(74.0, w / 7);
@@ -295,11 +288,18 @@ class _RealtimeViewState extends State<RealtimeView> {
       final note = _online ? netNoteText(ctx.lang, _notes.note, _notes.seat >= 0 ? ctx.seatName(_notes.seat) : '') : '';
       if (note.isEmpty) return body;
       return Column(children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          color: Theme.of(context).colorScheme.tertiaryContainer,
-          child: Text(note, textAlign: TextAlign.center, maxLines: 2, style: Theme.of(context).textTheme.labelMedium),
+        StudioPanel(
+          margin: const EdgeInsets.fromLTRB(10, 6, 10, 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          radius: 14,
+          borderColor: StudioLook.gold.withValues(alpha: 0.7),
+          child: SizedBox(
+            width: double.infinity,
+            child: Text(note,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: const TextStyle(color: kStudioText, fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
         ),
         Expanded(child: body),
       ]);
@@ -311,9 +311,14 @@ class _RealtimeViewState extends State<RealtimeView> {
         child: Row(children: [
           Expanded(
               child: Text('$_you: ${shown.playerScore}  ·  $_rival: ${shown.aiScore}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleSmall)),
-          const Icon(Icons.timer_outlined, size: 18),
-          Text(' ${shown.time ~/ 60000}:${(shown.time ~/ 1000 % 60).toString().padLeft(2, '0')}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: kStudioText, fontSize: 14, fontWeight: FontWeight.w800))),
+          const SizedBox(width: 8),
+          StudioTag(
+            icon: Icons.timer_outlined,
+            text: '${shown.time ~/ 60000}:${(shown.time ~/ 1000 % 60).toString().padLeft(2, '0')}',
+          ),
         ]),
       );
 
@@ -338,11 +343,18 @@ class _RealtimeViewState extends State<RealtimeView> {
       _badge('$_you · 🂠 ${s.stacks[0].length}', active: s.turn == 0),
       Padding(
         padding: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: double.infinity,
-          height: 64,
-          child: FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: _flash > 0 ? const Color(0xFFE2574C) : null),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            // Yanlış basışta düğme kırmızı yanar.
+            boxShadow: _flash > 0 ? [const BoxShadow(color: StudioLook.bad, blurRadius: 18, spreadRadius: 2)] : null,
+          ),
+          child: StudioButton(
+            height: 64,
+            fontSize: 26,
+            tone: _flash > 0 ? StudioButtonTone.ghost : StudioButtonTone.hot,
+            label: kt(ctx.lang, 'snap'),
             onPressed: _ended
                 ? null
                 : () {
@@ -355,7 +367,6 @@ class _RealtimeViewState extends State<RealtimeView> {
                     if (!ok) _flash = 400;
                     setState(() {});
                   },
-            child: Text(kt(ctx.lang, 'snap'), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
           ),
         ),
       ),
@@ -375,7 +386,7 @@ class _RealtimeViewState extends State<RealtimeView> {
           _card(s.centers[i].isNotEmpty ? s.centers[i].last : null, cw * 1.15),
           const SizedBox(width: 12),
         ],
-        Text('↻ ${s.sides[0].length + s.sides[1].length}'),
+        StudioTag(text: '↻ ${s.sides[0].length + s.sides[1].length}'),
       ]),
       const Spacer(),
       Wrap(alignment: WrapAlignment.center, spacing: 6, children: [
@@ -419,7 +430,7 @@ class _RealtimeViewState extends State<RealtimeView> {
       Padding(
         padding: const EdgeInsets.all(6),
         child: Column(children: [
-          Text(kt(ctx.lang, 'foundations'), style: Theme.of(context).textTheme.labelSmall),
+          Text(kt(ctx.lang, 'foundations'), style: const TextStyle(color: kStudioTextDim, fontSize: 12, fontWeight: FontWeight.w700)),
           Wrap(spacing: 3, runSpacing: 3, alignment: WrapAlignment.center, children: [
             for (final f in s.foundations) _card(f.last, cw * 0.62),
           ]),
@@ -433,7 +444,7 @@ class _RealtimeViewState extends State<RealtimeView> {
       Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
         Column(children: [
           pile(s.nertz[0], 0),
-          Text('${kt(ctx.lang, 'nertz')}: ${s.nertz[0].length}', style: Theme.of(context).textTheme.labelSmall),
+          Text('${kt(ctx.lang, 'nertz')}: ${s.nertz[0].length}', style: const TextStyle(color: kStudioTextDim, fontSize: 12, fontWeight: FontWeight.w700)),
         ]),
         GestureDetector(
           onTap: () {
@@ -487,10 +498,9 @@ class _RealtimeViewState extends State<RealtimeView> {
       ]),
       Padding(
         padding: const EdgeInsets.all(12),
-        child: SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: FilledButton(
+        child: StudioButton.hot(
+            label: kt(ctx.lang, 'kemps'),
+            icon: Icons.campaign_rounded,
             onPressed: _ended
                 ? null
                 : () {
@@ -499,8 +509,6 @@ class _RealtimeViewState extends State<RealtimeView> {
                     setState(() {});
                     _end();
                   },
-            child: Text(kt(ctx.lang, 'kemps'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          ),
         ),
       ),
     ]);

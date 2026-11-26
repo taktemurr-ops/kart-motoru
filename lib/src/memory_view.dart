@@ -9,6 +9,7 @@ import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
 import 'memory_engine.dart';
+import 'studio_chrome.dart';
 
 /// Kart hafıza ekranı.
 class MemoryView extends StatefulWidget {
@@ -126,7 +127,7 @@ class _MemoryViewState extends State<MemoryView> {
       }, ctx.lang);
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: _build(context));
+  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     return LayoutBuilder(builder: (context, cons) {
@@ -145,12 +146,12 @@ class _MemoryViewState extends State<MemoryView> {
             Expanded(
               child: Text(
                 '$_ruleText · ${Strings.pick(_tMoves, ctx.lang)}: ${game.moves}',
-                style: Theme.of(context).textTheme.titleSmall,
+                style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w800, fontSize: 14),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Icon(Icons.timer_outlined, size: 18),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
+            const SizedBox(width: 8),
+            StudioTag(icon: Icons.timer_outlined, text: '${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
           ]),
         ),
         Expanded(
@@ -176,8 +177,8 @@ class _MemoryViewState extends State<MemoryView> {
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            IconButton.filledTonal(onPressed: _ended ? null : _useHint, icon: const Icon(Icons.lightbulb), tooltip: ctx.t('hint')),
-            Text('${Strings.pick(_tPairs, ctx.lang)}: ${game.matched.length ~/ 2} / ${level.pairs}'),
+            StudioRoundAction(onPressed: _ended ? null : _useHint, icon: Icons.lightbulb, tooltip: ctx.t('hint')),
+            StudioTag(icon: Icons.style_rounded, text: '${Strings.pick(_tPairs, ctx.lang)}: ${game.matched.length ~/ 2} / ${level.pairs}'),
           ]),
         ),
       ]);

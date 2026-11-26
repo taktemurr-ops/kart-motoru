@@ -10,6 +10,7 @@ import 'package:studio_core/core/strings.dart';
 import 'card_painter.dart';
 import 'cards.dart';
 import 'square.dart';
+import 'studio_chrome.dart';
 
 /// Kart Karesi ekranı: üstte ızgara ve çizgi toplamları, altta eldeki kartlar.
 class SquareView extends StatefulWidget {
@@ -141,17 +142,21 @@ class _SquareViewState extends State<SquareView> {
     final s = game.partialSum(cells);
     final good = full == level.target;
     final over = s > level.target;
-    final cs = Theme.of(context).colorScheme;
+    final look = StudioLook.of(context);
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: good ? const Color(0xFF2E9E5B) : (over ? cs.errorContainer : cs.surfaceContainerHighest),
+        color: good ? StudioLook.good : (over ? StudioLook.bad : Colors.black.withValues(alpha: 0.38)),
         shape: BoxShape.circle,
+        border: Border.all(color: good || over ? Colors.white70 : look.accent.withValues(alpha: 0.6), width: 1.2),
       ),
       child: Text('$s',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: size * 0.42, color: good ? Colors.white : cs.onSurface)),
+          style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: size * 0.42,
+              color: good ? const Color(0xFF0B2A12) : (over ? Colors.white : kStudioText))),
     );
   }
 
@@ -159,7 +164,7 @@ class _SquareViewState extends State<SquareView> {
       SizedBox(width: w, height: w * 1.4, child: CustomPaint(painter: _CardP(c, _style, hl, dim)));
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: _build(context));
+  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     final n = level.n;
@@ -199,10 +204,12 @@ class _SquareViewState extends State<SquareView> {
           child: Row(children: [
             Expanded(
               child: Text('$goal · ${Strings.pick(_tLines, ctx.lang)}: ${game.goodLines} / ${level.required}',
-                  style: Theme.of(context).textTheme.titleSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w800, fontSize: 14),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
             ),
-            const Icon(Icons.timer_outlined, size: 18),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
+            const SizedBox(width: 8),
+            StudioTag(icon: Icons.timer_outlined, text: '${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
           ]),
         ),
         Expanded(
@@ -235,7 +242,10 @@ class _SquareViewState extends State<SquareView> {
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-            color: Colors.black.withValues(alpha: 0.06),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.22),
+              border: Border.symmetric(horizontal: BorderSide(color: StudioLook.of(context).accent.withValues(alpha: 0.35))),
+            ),
             constraints: BoxConstraints(minHeight: tw * 1.4 + 12),
             child: Wrap(alignment: WrapAlignment.center, spacing: 6, runSpacing: 6, children: [
               for (final k in tray)
@@ -246,8 +256,8 @@ class _SquareViewState extends State<SquareView> {
         Padding(
           padding: const EdgeInsets.only(bottom: 8, top: 6),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            IconButton.filledTonal(onPressed: _ended ? null : _useHint, icon: const Icon(Icons.lightbulb), tooltip: ctx.t('hint')),
-            Text('${Strings.pick(_tMoves, ctx.lang)}: ${game.moves}'),
+            StudioRoundAction(onPressed: _ended ? null : _useHint, icon: Icons.lightbulb, tooltip: ctx.t('hint')),
+            StudioTag(icon: Icons.swap_horiz, text: '${Strings.pick(_tMoves, ctx.lang)}: ${game.moves}'),
           ]),
         ),
       ]);

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'cards.dart';
+import 'studio_chrome.dart';
 import 'tarot.dart';
 
 /// Stüdyonun kendi kart tasarımı: fildişi zemin, büyük köşe yazısı, ortada
@@ -33,6 +34,10 @@ class CardStyle {
     return suit == kHearts || suit == kDiamonds ? red : ink;
   }
 }
+
+/// Koyu zemin üstündeki yazıda takım rengi (kırmızılar açık ton, siyahlar beyaz).
+Color suitOnDark(int suit) =>
+    suit == kHearts || suit == kDiamonds ? const Color(0xFFFF8A80) : Colors.white;
 
 /// Birim karede (0..1) renk simgesi.
 Path suitPath(int suit) {
@@ -387,17 +392,38 @@ class FeltTable extends StatelessWidget {
   const FeltTable({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, -0.2),
-            radius: 1.1,
-            colors: [Color(0xFF2F8A5B), Color(0xFF1C6143), Color(0xFF123F2C)],
-            stops: [0, 0.65, 1],
+  Widget build(BuildContext context) {
+    final look = StudioLook.of(context);
+    // Çuha masa oyunun kendi sanatıdır; onaylı tasarımın çerçevesiyle
+    // (vurgu kenarı, yuvarlak köşe) dünya zemininin üstüne oturur. İçindeki
+    // bütün arayüz (etiket, seçici, diyalog) koyu stüdyo temasıyla çizilir.
+    return StudioChrome(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: look.accent.withValues(alpha: 0.55), width: 1.4),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0, -0.2),
+                  radius: 1.1,
+                  colors: [Color(0xFF2F8A5B), Color(0xFF1C6143), Color(0xFF123F2C)],
+                  stops: [0, 0.65, 1],
+                ),
+              ),
+              child: CustomPaint(painter: _FeltGrain(), child: child),
+            ),
           ),
         ),
-        child: CustomPaint(painter: _FeltGrain(), child: child),
-      );
+      ),
+    );
+  }
 }
 
 class _FeltGrain extends CustomPainter {

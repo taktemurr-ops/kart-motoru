@@ -14,6 +14,7 @@ import 'card_painter.dart';
 import 'cards.dart';
 import 'kart_texts.dart';
 import 'match.dart';
+import 'studio_chrome.dart';
 import 'table_rules.dart';
 import 'table_view.dart';
 import 'trick_rules.dart';
@@ -396,7 +397,9 @@ class _MatchViewState extends State<MatchView> {
       );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => StudioChrome(child: Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     if (phase == _Phase.single) {
       final c = _singleCtx();
       return ctx.generated.puzzle is TrickLevel ? TrickHandView(ctx: c) : TableHandView(ctx: c);
@@ -424,43 +427,59 @@ class _MatchViewState extends State<MatchView> {
   }
 
   Widget _header(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final look = StudioLook.of(context);
     final t = plan.totals(m);
-    return Material(
-      color: cs.surfaceContainerHigh,
-      child: InkWell(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+      child: StudioPanel(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        radius: 16,
+        semanticLabel: kt(lang, 'scoreboard'),
+        gradient: LinearGradient(colors: [look.sheet.withValues(alpha: 0.92), look.base.withValues(alpha: 0.92)]),
         onTap: () => showDialog<void>(
           context: context,
-          builder: (c) => AlertDialog(
-            title: Text(kt(lang, 'scoreboard')),
-            content: SizedBox(width: 420, child: _scoreTable(context)),
-            actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text(kt(lang, 'done')))],
+          builder: (c) => StudioChrome(
+            child: AlertDialog(
+              icon: const Icon(Icons.emoji_events_rounded, color: StudioLook.gold, size: 34),
+              title: Text(kt(lang, 'scoreboard')),
+              content: SizedBox(width: 420, child: _scoreTable(c)),
+              actions: [
+                StudioButton(
+                  expand: false,
+                  height: 48,
+                  fontSize: 16,
+                  icon: Icons.check_rounded,
+                  onPressed: () => Navigator.pop(c),
+                  label: kt(lang, 'done'),
+                ),
+              ],
+            ),
           ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Row(children: [
-            Icon(Icons.emoji_events_outlined, size: 18, color: cs.primary),
-            const SizedBox(width: 6),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  for (var i = 0; i < plan.sides; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Text('${_sideName(i)} ${t[i]}',
-                          style: TextStyle(
-                              fontWeight: i == plan.sideOf(me) ? FontWeight.w800 : FontWeight.w500, fontSize: 13)),
-                    ),
-                ]),
-              ),
+        child: Row(children: [
+          const Icon(Icons.emoji_events_rounded, size: 20, color: StudioLook.gold),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (var i = 0; i < plan.sides; i++)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 12),
+                    child: Text('${_sideName(i)} ${t[i]}',
+                        style: TextStyle(
+                            color: i == plan.sideOf(me) ? look.accent : kStudioText,
+                            fontWeight: i == plan.sideOf(me) ? FontWeight.w900 : FontWeight.w600,
+                            fontSize: 13.5)),
+                  ),
+              ]),
             ),
-            Text(_formatLine(), style: Theme.of(context).textTheme.labelSmall),
-            const SizedBox(width: 4),
-            Icon(Icons.table_rows_outlined, size: 16, color: cs.onSurfaceVariant),
-          ]),
-        ),
+          ),
+          Text(_formatLine(), style: const TextStyle(color: kStudioTextDim, fontSize: 11.5, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 4),
+          const Icon(Icons.table_rows_rounded, size: 18, color: kStudioTextDim),
+        ]),
       ),
     );
   }
@@ -468,13 +487,20 @@ class _MatchViewState extends State<MatchView> {
   Widget _scoreTable(BuildContext context) {
     final sides = plan.sides;
     final t = plan.totals(m);
-    final bold = Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800);
+    final look = StudioLook.of(context);
+    const bold = TextStyle(color: kStudioText, fontSize: 14, fontWeight: FontWeight.w900);
+    const plain = TextStyle(color: Color(0xFFE1E3F2), fontSize: 14, fontWeight: FontWeight.w600);
     Widget cell(String s, {TextStyle? st, bool left = false}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-          child: Text(s, style: st, textAlign: left ? TextAlign.start : TextAlign.end),
+          child: Text(s, style: st ?? plain, textAlign: left ? TextAlign.start : TextAlign.end),
         );
     final rows = <TableRow>[
-      TableRow(children: [
+      TableRow(
+        decoration: BoxDecoration(
+          color: look.accent.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        children: [
         cell(kt(lang, 'deal'), st: bold, left: true),
         for (var i = 0; i < sides; i++) cell(_sideName(i), st: bold),
       ]),
@@ -489,10 +515,10 @@ class _MatchViewState extends State<MatchView> {
           for (var i = 0; i < sides; i++) cell('${i < m.points[d].length ? m.points[d][i] : 0}'),
         ]),
       TableRow(
-        decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: look.accent.withValues(alpha: 0.6), width: 1.4))),
         children: [
           cell('Σ', st: bold, left: true),
-          for (var i = 0; i < sides; i++) cell('${t[i]}', st: bold),
+          for (var i = 0; i < sides; i++) cell('${t[i]}', st: bold.copyWith(color: StudioLook.gold)),
         ],
       ),
     ];
@@ -508,10 +534,13 @@ class _MatchViewState extends State<MatchView> {
     );
   }
 
-  Widget _card(Widget child) => Card(
-        margin: const EdgeInsets.all(16),
-        child: Padding(padding: const EdgeInsets.all(16), child: child),
+  Widget _card(Widget child) => ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: StudioBoardPanel(child: child),
       );
+
+  static const _titleSt = TextStyle(color: kStudioText, fontSize: 21, fontWeight: FontWeight.w900);
+  static const _subSt = TextStyle(color: kStudioTextDim, fontSize: 13.5, fontWeight: FontWeight.w700);
 
   Widget _modePanel() {
     final host = net == null || net!.isHost;
@@ -519,29 +548,30 @@ class _MatchViewState extends State<MatchView> {
       return _card(Column(mainAxisSize: MainAxisSize.min, children: [
         const CircularProgressIndicator(),
         const SizedBox(height: 12),
-        Text(kt(lang, 'waitHost'), textAlign: TextAlign.center),
+        Text(kt(lang, 'waitHost'), textAlign: TextAlign.center, style: _subSt),
       ]));
     }
     return _card(Column(mainAxisSize: MainAxisSize.min, children: [
-      Text(kt(lang, 'howToPlay'), style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 14),
+      StudioSheetTitle(kt(lang, 'howToPlay'), icon: Icons.style_rounded),
+      const SizedBox(height: 4),
       SizedBox(
-        width: 280,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-          icon: const Icon(Icons.emoji_events),
+        width: 300,
+        child: StudioButton.hot(
+          icon: Icons.emoji_events_rounded,
           onPressed: () => _setMode(1),
-          label: Text('${kt(lang, 'match')}  ·  ${_formatLine()}', textAlign: TextAlign.center),
+          label: kt(lang, 'match'),
         ),
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 6),
+      Text(_formatLine(), textAlign: TextAlign.center, style: _subSt),
+      const SizedBox(height: 12),
       SizedBox(
-        width: 280,
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          icon: const Icon(Icons.style),
+        width: 300,
+        child: StudioButton(
+          tone: StudioButtonTone.ghost,
+          icon: Icons.style_rounded,
           onPressed: () => _setMode(0),
-          label: Text(kt(lang, 'singleHand')),
+          label: kt(lang, 'singleHand'),
         ),
       ),
     ]));
@@ -561,32 +591,32 @@ class _MatchViewState extends State<MatchView> {
         : '${kt(lang, 'deal')} ${m.played + 1}/${plan.format.deals}  ·  ${_seatName(c)}';
     if (!local) {
       return _card(Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
+        Text(title, textAlign: TextAlign.center, style: _titleSt.copyWith(fontSize: 17)),
         const SizedBox(height: 12),
         const CircularProgressIndicator(),
         const SizedBox(height: 12),
-        Text(kt(lang, 'choosing')),
+        Text(kt(lang, 'choosing'), style: _subSt),
       ]));
     }
     if (!_uncovered) {
-      return _card(InkWell(
-        onTap: () => setState(() => _uncovered = true),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.swap_horiz, size: 32),
-          Text(ctx.t('pass_device', {'p': ctx.seatName(c)}),
-              textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text(ctx.t('tap_when_ready')),
-        ]),
-      ));
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: StudioCover(
+          margin: const EdgeInsets.all(16),
+          text: ctx.t('pass_device', {'p': ctx.seatName(c)}),
+          sub: ctx.t('tap_when_ready'),
+          onTap: () => setState(() => _uncovered = true),
+        ),
+      );
     }
     final hand = plan.chooserHand(m);
     return LayoutBuilder(builder: (context, cons) {
       final cw = math.min(46.0, (cons.maxWidth - 64) / 7.5);
       return SingleChildScrollView(
         child: _card(Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(title, style: Theme.of(context).textTheme.labelLarge),
+          Text(title, textAlign: TextAlign.center, style: _subSt),
           const SizedBox(height: 4),
-          Text(kt(lang, 'chooseContract'), style: Theme.of(context).textTheme.titleLarge),
+          Text(kt(lang, 'chooseContract'), textAlign: TextAlign.center, style: _titleSt),
           const SizedBox(height: 10),
           Wrap(spacing: 2, runSpacing: 4, alignment: WrapAlignment.center, children: [
             for (final k in hand)
@@ -595,7 +625,7 @@ class _MatchViewState extends State<MatchView> {
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
             for (final o in plan.options(m))
-              FilledButton.tonal(onPressed: () => _pick(o), child: Text(plan.optionLabel(o, lang))),
+              StudioChoice(onPressed: () => _pick(o), label: plan.optionLabel(o, lang)),
           ]),
         ])),
       );
@@ -609,23 +639,27 @@ class _MatchViewState extends State<MatchView> {
         : '${kt(lang, 'deal')} ${m.played}  ·  ${kt(lang, 'scoreboard')}';
     return SingleChildScrollView(
       child: _card(Column(mainAxisSize: MainAxisSize.min, children: [
-        if (isLast) Icon(out! >= 0 && _iWon(out) ? Icons.emoji_events : Icons.flag, size: 40, color: const Color(0xFFFFB300)),
-        Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+        if (isLast)
+          Icon(out! >= 0 && _iWon(out) ? Icons.emoji_events_rounded : Icons.flag_rounded,
+              size: 44, color: StudioLook.gold),
+        Text(title, style: _titleSt, textAlign: TextAlign.center),
         const SizedBox(height: 4),
-        Text(_formatLine(), style: Theme.of(context).textTheme.bodySmall),
+        Text(_formatLine(), style: _subSt, textAlign: TextAlign.center),
         const SizedBox(height: 8),
         SizedBox(width: 420, child: _scoreTable(context)),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          style: FilledButton.styleFrom(minimumSize: const Size(220, 48)),
-          icon: Icon(isLast ? Icons.check : Icons.play_arrow),
-          onPressed: isLast
-              ? _finish
-              : () {
-                  _auto?.cancel();
-                  _next();
-                },
-          label: Text(isLast ? kt(lang, 'done') : kt(lang, 'nextDeal')),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: 260,
+          child: StudioButton.hot(
+            icon: isLast ? Icons.check_rounded : Icons.play_arrow_rounded,
+            onPressed: isLast
+                ? _finish
+                : () {
+                    _auto?.cancel();
+                    _next();
+                  },
+            label: isLast ? kt(lang, 'done') : kt(lang, 'nextDeal'),
+          ),
         ),
       ])),
     );

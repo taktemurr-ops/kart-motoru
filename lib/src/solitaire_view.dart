@@ -11,6 +11,7 @@ import 'card_painter.dart';
 import 'cards.dart';
 import 'solitaire_engine.dart';
 import 'solitaire_rules.dart';
+import 'studio_chrome.dart';
 
 /// Ekrandaki bir kart.
 class _Placed {
@@ -294,7 +295,7 @@ class _SolitaireViewState extends State<SolitaireView> {
   }
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: _build(context));
+  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     final style = _style;
@@ -305,12 +306,12 @@ class _SolitaireViewState extends State<SolitaireView> {
           Expanded(
             child: Text(
                 Strings.tx(ctx.lang, 'Yerine giden: {0} / {1}', 'Cards home: {0} / {1}', [v.progress(game.s), v.totalCards]),
-                style: Theme.of(context).textTheme.titleSmall),
+                style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w800, fontSize: 14)),
           ),
-          const Icon(Icons.swap_horiz, size: 18),
-          Text(' ${game.moves}  '),
-          const Icon(Icons.timer_outlined, size: 18),
-          Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
+          const SizedBox(width: 6),
+          StudioTag(icon: Icons.swap_horiz, text: '${game.moves}'),
+          const SizedBox(width: 6),
+          StudioTag(icon: Icons.timer_outlined, text: '${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}'),
         ]),
       ),
       Expanded(
@@ -358,8 +359,8 @@ class _SolitaireViewState extends State<SolitaireView> {
       Padding(
         padding: const EdgeInsets.only(bottom: 6, top: 2),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-          IconButton.filledTonal(onPressed: _ended ? null : _useHint, icon: const Icon(Icons.lightbulb), tooltip: ctx.t('hint')),
-          IconButton.filledTonal(
+          StudioRoundAction(onPressed: _ended ? null : _useHint, icon: Icons.lightbulb, tooltip: ctx.t('hint')),
+          StudioRoundAction(
               onPressed: game.canUndo && !_ended
                   ? () {
                       setState(() {
@@ -370,13 +371,16 @@ class _SolitaireViewState extends State<SolitaireView> {
                       _persist();
                     }
                   : null,
-              icon: const Icon(Icons.undo),
+              icon: Icons.undo,
               tooltip: ctx.t('undo')),
           if (v.canAutoFinish(game.s))
-            FilledButton.icon(
+            StudioButton(
+              expand: false,
+              height: 48,
+              fontSize: 16,
               onPressed: _ended ? null : _autoFinish,
-              icon: const Icon(Icons.done_all),
-              label: Text(Strings.tx(ctx.lang, 'Bitir', 'Finish')),
+              icon: Icons.done_all,
+              label: Strings.tx(ctx.lang, 'Bitir', 'Finish'),
             ),
         ]),
       ),

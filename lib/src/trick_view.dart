@@ -12,6 +12,7 @@ import 'package:studio_core/core/strings.dart';
 import 'card_painter.dart';
 import 'cards.dart';
 import 'match_view.dart';
+import 'studio_chrome.dart';
 import 'trick_ai.dart';
 import 'trick_engine.dart';
 import 'trick_rules.dart';
@@ -387,31 +388,22 @@ class _TrickViewState extends State<TrickHandView> {
   Widget _seatBadge(int seat) {
     final bid = s.bids[seat];
     final active = s.turn == seat && s.phase != TrickPhase.over;
-    final cs = Theme.of(context).colorScheme;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: active ? cs.primaryContainer : cs.surfaceContainerHigh.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: active ? cs.primary : Colors.transparent, width: 2),
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(_seatName(seat), style: const TextStyle(fontWeight: FontWeight.w700)),
-        Text('${Strings.tx(ctx.lang, 'El', 'Tricks')}: ${s.tricks[seat]}'
-            '${bid != null ? '  ·  ${rules.bidLabel(bid, ctx.lang)}' : ''}'
-            '${seat != me ? '  ·  🂠${s.hands[seat].length}' : ''}',
-            style: const TextStyle(fontSize: 12)),
-        // Açık el (Null Ouvert): kartlar herkese görünür.
-        if (seat != me && rules.openHand(s, seat))
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 190),
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Wrap(spacing: 1, runSpacing: 2, children: [for (final c in s.hands[seat]) _card(c, 18)]),
-            ),
-          ),
-      ]),
+    return StudioSeatBadge(
+      title: _seatName(seat),
+      active: active,
+      detail: '${Strings.tx(ctx.lang, 'El', 'Tricks')}: ${s.tricks[seat]}'
+          '${bid != null ? '  ·  ${rules.bidLabel(bid, ctx.lang)}' : ''}'
+          '${seat != me ? '  ·  🂠${s.hands[seat].length}' : ''}',
+      // Açık el (Null Ouvert): kartlar herkese görünür.
+      extra: seat != me && rules.openHand(s, seat)
+          ? ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 190),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(spacing: 1, runSpacing: 2, children: [for (final c in s.hands[seat]) _card(c, 18)]),
+              ),
+            )
+          : null,
     );
   }
 
@@ -422,7 +414,7 @@ class _TrickViewState extends State<TrickHandView> {
       );
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: _build(context));
+  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     final trumpTxt = s.trump >= 0 && s.trump < 4 ? ['♠', '♥', '♦', '♣'][s.trump] : null;
@@ -435,36 +427,36 @@ class _TrickViewState extends State<TrickHandView> {
       final legal = _myTurn && s.phase == TrickPhase.play ? rules.legalPlays(s, s.turn).toSet() : <KCard>{};
       final trickCards = _shownTrick.isNotEmpty ? _shownTrick : s.trick;
       final trickLeader = _shownTrick.isNotEmpty ? _shownLeader : s.leader;
-      // Koyu masa zemininde üst bilgiler açık renkle yazılır (okunurluk).
-      final bg = ctx.background;
-      final dark = bg.isNotEmpty && bg.map((c) => c.computeLuminance()).reduce((a, b) => a + b) / bg.length < 0.3;
-      final fg = dark ? const Color(0xFFF5EFE6) : null;
-      final fgDim = dark ? const Color(0xCCF5EFE6) : null;
       return Column(children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Row(children: [
             Expanded(
               child: Text(level.goal.text(rules, s, ctx.lang),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w800, fontSize: 14),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
             ),
             if (trumpTxt != null)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                child: Text('${Strings.tx(ctx.lang, 'Koz', 'Trump')} $trumpTxt',
-                    style: TextStyle(color: _style.suitColor(s.trump), fontWeight: FontWeight.w800)),
+              Padding(
+                padding: const EdgeInsetsDirectional.only(start: 8),
+                child: StudioTag(
+                  text: '${Strings.tx(ctx.lang, 'Koz', 'Trump')} $trumpTxt',
+                  // Kırmızı takımlar koyu zeminde açık tonla okunur.
+                  style: TextStyle(color: suitOnDark(s.trump)),
+                ),
               ),
             const SizedBox(width: 8),
-            Icon(Icons.timer_outlined, size: 18, color: fg),
-            Text(' ${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}', style: TextStyle(color: fg)),
+            StudioTag(
+              icon: Icons.timer_outlined,
+              text: '${_seconds ~/ 60}:${(_seconds % 60).toString().padLeft(2, '0')}',
+            ),
           ]),
         ),
         if (status.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
-            child: Text(status, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: fgDim)),
+            child: Text(status, style: const TextStyle(color: kStudioTextDim, fontSize: 12.5, fontWeight: FontWeight.w600)),
           ),
         Expanded(
           child: Stack(children: [
@@ -495,24 +487,23 @@ class _TrickViewState extends State<TrickHandView> {
             if (s.phase == TrickPhase.bidding && _myTurn && !_busy)
               Align(
                 alignment: const Alignment(0, 0.55),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text(rules.bidPrompt(s, ctx.lang), style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 6),
-                      Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
-                        for (final b in rules.legalBids(s, s.turn))
-                          FilledButton.tonal(
-                            style: _hintBid == b
-                                ? FilledButton.styleFrom(backgroundColor: const Color(0xFFFFC53D))
-                                : null,
-                            onPressed: () => _humanBid(b),
-                            child: Text(rules.bidLabel(b, ctx.lang)),
-                          ),
-                      ]),
+                child: StudioBoardPanel(
+                  margin: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(rules.bidPrompt(s, ctx.lang),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: kStudioText, fontSize: 17, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
+                      for (final b in rules.legalBids(s, s.turn))
+                        StudioChoice(
+                          hinted: _hintBid == b,
+                          onPressed: () => _humanBid(b),
+                          label: rules.bidLabel(b, ctx.lang),
+                        ),
                     ]),
-                  ),
+                  ]),
                 ),
               ),
           ]),
@@ -522,10 +513,13 @@ class _TrickViewState extends State<TrickHandView> {
             padding: const EdgeInsets.only(bottom: 4),
             child: Wrap(spacing: 8, alignment: WrapAlignment.center, children: [
               for (final a in rules.playActions(s, s.turn))
-                FilledButton.icon(
-                  icon: const Icon(Icons.visibility),
+                StudioButton(
+                  expand: false,
+                  height: 48,
+                  fontSize: 15,
+                  icon: Icons.visibility,
                   onPressed: () => _humanAction(a),
-                  label: Text(rules.playActionLabel(a, ctx.lang)),
+                  label: rules.playActionLabel(a, ctx.lang),
                 ),
             ]),
           ),
@@ -533,20 +527,11 @@ class _TrickViewState extends State<TrickHandView> {
         const SizedBox(height: 4),
         // Oyuncunun eli
         if (_cover)
-          GestureDetector(
+          StudioCover(
+            height: cw * 1.4 + 18,
+            text: ctx.t('pass_device', {'p': ctx.seatName(_shown)}),
+            sub: ctx.t('tap_when_ready'),
             onTap: () => setState(() => _cover = false),
-            child: Container(
-              height: cw * 1.4 + 18,
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, borderRadius: BorderRadius.circular(16)),
-              alignment: Alignment.center,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.swap_horiz),
-                Text(ctx.t('pass_device', {'p': ctx.seatName(_shown)}),
-                    textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
-                Text(ctx.t('tap_when_ready')),
-              ]),
-            ),
           )
         else
         SizedBox(
@@ -578,13 +563,13 @@ class _TrickViewState extends State<TrickHandView> {
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            IconButton.filledTonal(
+            StudioRoundAction(
                 onPressed: _ended || _busy || !_myTurn ? null : _hint,
-                icon: const Icon(Icons.lightbulb),
+                icon: Icons.lightbulb,
                 tooltip: ctx.t('hint')),
-            IconButton.filledTonal(
+            StudioRoundAction(
                 onPressed: _undo.isNotEmpty && !_busy && !_ended ? _doUndo : null,
-                icon: const Icon(Icons.undo),
+                icon: Icons.undo,
                 tooltip: ctx.t('undo')),
           ]),
         ),
