@@ -80,6 +80,43 @@ void main() {
     expect(s.over, isTrue);
   });
 
+  test('eşli domino: çift dokuzlu takım, ortaklar, çekme yok', () {
+    expect(dominoA(dominoTile9(3, 9)), 3);
+    expect(dominoB(dominoTile9(9, 3)), 9);
+    expect(dominoA(dominoFlipped(dominoTile9(3, 9))), 3);
+    expect(dominoIsFlipped(dominoFlipped(dominoTile9(8, 9))), isTrue);
+    expect(dominoIsFlipped(dominoTile(6, 6)), isFalse);
+    for (final nine in [false, true]) {
+      final r = PartnerDominoRules(nine: nine);
+      expect(r.partnerships, isTrue);
+      final deck = r.deck();
+      expect(deck.length, nine ? 55 : 28);
+      expect(deck.toSet().length, deck.length);
+      deck.shuffle();
+      final s = r.deal(deck, 0);
+      expect(s.hands.every((h) => h.length == (nine ? 10 : 7)), isTrue);
+      var guard = 0;
+      while (!s.over && guard++ < 400) {
+        final l = r.legalActions(s);
+        expect(l.any((a) => a.kind == 1), isFalse);
+        r.apply(s, l.first);
+        final line = s.piles[1];
+        for (var i = 0; i + 1 < line.length; i++) {
+          final a = line[i], b = line[i + 1];
+          final ar = dominoIsFlipped(a) ? dominoA(a) : dominoB(a);
+          final bl = dominoIsFlipped(b) ? dominoB(b) : dominoA(b);
+          expect(ar, bl);
+        }
+      }
+      expect(s.over, isTrue);
+      final w = [for (var p = 0; p < 4; p++) p].firstWhere((p) => s.scores[p] > 0, orElse: () => -1);
+      if (w >= 0) {
+        expect(s.scores[(w + 2) % 4], s.scores[w]);
+        expect(r.utility(s, (w + 2) % 4), greaterThan(0));
+      }
+    }
+  });
+
   final games = <String, TableGameRules>{
     'okey': TableGameRules(gameId: 'okey', rulesFor: (_) => const OkeyRules(), aiScale: 0.1, quickValidate: true),
     'okey-esli': TableGameRules(gameId: 'okey-esli', rulesFor: (_) => const OkeyRules(partners: true), aiScale: 0.1, quickValidate: true),
@@ -87,6 +124,7 @@ void main() {
     'okey-iki': TableGameRules(gameId: 'okey-iki', rulesFor: (_) => const OkeyRules(players: 2), aiScale: 0.1, quickValidate: true),
     '101': TableGameRules(gameId: '101', rulesFor: (_) => const Okey101Rules(), aiScale: 0.1, quickValidate: true),
     'domino': TableGameRules(gameId: 'domino', rulesFor: (d) => DominoRules(d <= 4 ? 2 : 4), quickValidate: true),
+    'esli-domino': TableGameRules(gameId: 'esli-domino', rulesFor: (d) => PartnerDominoRules(nine: d >= 7), quickValidate: true),
     'mahjong': TableGameRules(gameId: 'mahjong', rulesFor: (_) => const MahjongRules(), aiScale: 0.1, quickValidate: true),
     'riichi': TableGameRules(gameId: 'riichi', rulesFor: (_) => const MahjongRules(MahjongStyle.riichi), aiScale: 0.1, quickValidate: true),
     'hk': TableGameRules(gameId: 'hk', rulesFor: (_) => const MahjongRules(MahjongStyle.hongKong), aiScale: 0.1, quickValidate: true),
