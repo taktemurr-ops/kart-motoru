@@ -11,10 +11,12 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'table_theme.dart';
 import 'cards.dart';
 import 'kart_texts.dart';
 import 'match.dart';
 import 'studio_chrome.dart';
+import 'table_seats.dart';
 import 'table_rules.dart';
 import 'table_view.dart';
 import 'trick_rules.dart';
@@ -311,16 +313,10 @@ class _MatchViewState extends State<MatchView> {
       return seat == me && net != null ? Strings.tx(lang, 'Sen', 'You') : ctx.seatName(seat);
     }
     if (seat == me) return Strings.tx(lang, 'Sen', 'You');
+    // Masadaki adlarla aynı (yapay zekâ oyuncularının adları).
     final rel = (seat - me + n) % n;
-    if (n == 2) return kt(lang, 'rival');
-    if (n == 3) return rel == 1 ? Strings.tx(lang, 'Sol', 'Left') : Strings.tx(lang, 'Sağ', 'Right');
-    if (plan.partnerships && rel == 2) return Strings.tx(lang, 'Eşin', 'Partner');
-    return [
-      '',
-      Strings.tx(lang, 'Sol', 'Left'),
-      Strings.tx(lang, 'Karşı', 'Across'),
-      Strings.tx(lang, 'Sağ', 'Right'),
-    ][rel % 4];
+    final name = tableSeatName(ctx, seat, me, n);
+    return plan.partnerships && rel == 2 ? '$name (${Strings.tx(lang, 'Eş', 'Partner')})' : name;
   }
 
   String _sideName(int side) {
@@ -577,11 +573,7 @@ class _MatchViewState extends State<MatchView> {
     ]));
   }
 
-  CardStyle get _style => CardStyle(
-        backA: ctx.pieceColors.isNotEmpty ? ctx.pieceColors[0] : const Color(0xFF1F5E8C),
-        backB: ctx.pieceColors.length > 1 ? ctx.pieceColors[1] : const Color(0xFF2BB3B1),
-        colorBlind: ctx.colorBlind,
-      );
+  CardStyle get _style => kartCardStyle(context, ctx);
 
   Widget _choosePanel() {
     final c = plan.chooser(m);

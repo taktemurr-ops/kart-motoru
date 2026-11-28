@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'cards.dart';
 import 'studio_chrome.dart';
+import 'table_theme.dart';
 import 'tarot.dart';
 
 /// Stüdyonun kendi kart tasarımı: fildişi zemin, büyük köşe yazısı, ortada
@@ -18,9 +19,14 @@ class CardStyle {
   /// İspanyol destesi: maça → kılıç, kupa → kupa, karo → altın, sinek →
   /// sopa; resimliler 10 (uşak), 11 (atlı), 12 (kral).
   final bool spanish;
+
+  /// Sırt deseni (0 kafes, 1 çapraz şerit, 2 benek, 3 ışın, 4 dalga,
+  /// 5 dama, 6 zikzak, 7 rozet); oyunun masa temasından gelir.
+  final int back;
   const CardStyle({
     this.backA = const Color(0xFF1F5E8C),
     this.backB = const Color(0xFF2BB3B1),
+    this.back = 0,
     this.fourColor = false,
     this.colorBlind = false,
     this.spanish = false,
@@ -205,24 +211,7 @@ void _paintBack(Canvas c, RRect rr, CardStyle s) {
   final inner = rr.deflate(r.width * 0.07);
   c.save();
   c.clipRRect(inner);
-  // Kafes deseni: küçük baklavalar.
-  final step = r.width * 0.16;
-  final p = Paint()..color = Colors.white.withValues(alpha: 0.13);
-  for (var y = inner.top - step; y < inner.bottom + step; y += step) {
-    for (var x = inner.left - step; x < inner.right + step; x += step) {
-      final o = ((y - inner.top) / step).round().isOdd ? step / 2 : 0.0;
-      final cx = x + o, cy = y;
-      final d = step * 0.28;
-      c.drawPath(
-          Path()
-            ..moveTo(cx, cy - d)
-            ..lineTo(cx + d, cy)
-            ..lineTo(cx, cy + d)
-            ..lineTo(cx - d, cy)
-            ..close(),
-          p);
-    }
-  }
+  _backPattern(c, inner.outerRect, s.back, r.width);
   c.restore();
   c.drawRRect(
       inner,
@@ -230,19 +219,107 @@ void _paintBack(Canvas c, RRect rr, CardStyle s) {
         ..color = Colors.white.withValues(alpha: 0.55)
         ..style = PaintingStyle.stroke
         ..strokeWidth = math.max(1, r.width * 0.025));
-  // Ortada dört kollu yıldız arması.
+  // Ortada arma: desene göre dört ya da sekiz kollu yıldız.
   final ctr = r.center;
   final a = r.width * 0.2;
+  final arms = s.back.isEven ? 4 : 8;
   final star = Path();
-  for (var i = 0; i < 8; i++) {
-    final ang = -math.pi / 2 + i * math.pi / 4;
-    final rad = i.isEven ? a : a * 0.38;
+  for (var i = 0; i < arms * 2; i++) {
+    final ang = -math.pi / 2 + i * math.pi / arms;
+    final rad = i.isEven ? a : a * (arms == 4 ? 0.38 : 0.5);
     final pt = Offset(ctr.dx + math.cos(ang) * rad, ctr.dy + math.sin(ang) * rad);
     i == 0 ? star.moveTo(pt.dx, pt.dy) : star.lineTo(pt.dx, pt.dy);
   }
   star.close();
   c.drawCircle(ctr, a * 1.15, Paint()..color = Colors.white.withValues(alpha: 0.16));
   c.drawPath(star, Paint()..color = Colors.white.withValues(alpha: 0.85));
+}
+
+void _backPattern(Canvas c, Rect r, int kind, double w) {
+  final p = Paint()..color = Colors.white.withValues(alpha: 0.13);
+  final line = Paint()
+    ..color = Colors.white.withValues(alpha: 0.16)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = math.max(0.8, w * 0.018);
+  final step = w * 0.16;
+  switch (kind) {
+    case 1: // çapraz şerit
+      for (var x = r.left - r.height; x < r.right; x += step) {
+        c.drawLine(Offset(x, r.bottom), Offset(x + r.height, r.top), line);
+      }
+    case 2: // benek
+      var row = 0;
+      for (var y = r.top; y < r.bottom + step; y += step * 0.8) {
+        for (var x = r.left + (row.isOdd ? step / 2 : 0); x < r.right + step; x += step) {
+          c.drawCircle(Offset(x, y), step * 0.18, p);
+        }
+        row++;
+      }
+    case 3: // ışın
+      final ctr = r.center;
+      for (var k = 0; k < 24; k++) {
+        final a = k * math.pi / 12;
+        if (k.isEven) {
+          c.drawPath(
+              Path()
+                ..moveTo(ctr.dx, ctr.dy)
+                ..lineTo(ctr.dx + math.cos(a) * r.longestSide, ctr.dy + math.sin(a) * r.longestSide)
+                ..lineTo(ctr.dx + math.cos(a + math.pi / 12) * r.longestSide, ctr.dy + math.sin(a + math.pi / 12) * r.longestSide)
+                ..close(),
+              p);
+        }
+      }
+    case 4: // dalga
+      for (var y = r.top; y < r.bottom + step; y += step * 0.7) {
+        final path = Path()..moveTo(r.left, y);
+        for (var x = r.left; x <= r.right; x += w * 0.04) {
+          path.lineTo(x, y + math.sin((x - r.left) / (w * 0.08)) * step * 0.18);
+        }
+        c.drawPath(path, line);
+      }
+    case 5: // dama
+      final g = step * 0.9;
+      for (var y = r.top; y < r.bottom; y += g) {
+        for (var x = r.left; x < r.right; x += g) {
+          if ((((x - r.left) + (y - r.top)) / g).round().isEven) c.drawRect(Rect.fromLTWH(x, y, g, g), p);
+        }
+      }
+    case 6: // zikzak
+      for (var y = r.top; y < r.bottom + step; y += step * 0.75) {
+        final path = Path()..moveTo(r.left, y);
+        var up = true;
+        for (var x = r.left; x <= r.right + step; x += step * 0.5) {
+          path.lineTo(x, y + (up ? 0 : step * 0.35));
+          up = !up;
+        }
+        c.drawPath(path, line);
+      }
+    case 7: // rozet: iç içe halkalar ve taç yaprakları
+      final ctr = r.center;
+      for (var rad = w * 0.12; rad < r.longestSide; rad += w * 0.12) {
+        c.drawCircle(ctr, rad, line);
+      }
+      for (var k = 0; k < 8; k++) {
+        final a = k * math.pi / 4;
+        c.drawCircle(Offset(ctr.dx + math.cos(a) * w * 0.3, ctr.dy + math.sin(a) * w * 0.3), w * 0.08, p);
+      }
+    default: // kafes: küçük baklavalar
+      for (var y = r.top - step; y < r.bottom + step; y += step) {
+        for (var x = r.left - step; x < r.right + step; x += step) {
+          final o = ((y - r.top) / step).round().isOdd ? step / 2 : 0.0;
+          final cx = x + o, cy = y;
+          final d = step * 0.28;
+          c.drawPath(
+              Path()
+                ..moveTo(cx, cy - d)
+                ..lineTo(cx + d, cy)
+                ..lineTo(cx, cy + d)
+                ..lineTo(cx - d, cy)
+                ..close(),
+              p);
+        }
+      }
+  }
 }
 
 void _paintFace(Canvas c, RRect rr, KCard card, CardStyle s) {
@@ -461,9 +538,10 @@ class FeltTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final look = StudioLook.of(context);
-    // Çuha masa oyunun kendi sanatıdır; onaylı tasarımın çerçevesiyle
-    // (vurgu kenarı, yuvarlak köşe) dünya zemininin üstüne oturur. İçindeki
-    // bütün arayüz (etiket, seçici, diyalog) koyu stüdyo temasıyla çizilir.
+    // Masa (çuha, kenar, süsleme, kart sırtı) oyunun kendi sanatıdır ve her
+    // oyunda farklıdır (KartTableTheme); onaylı tasarımın çerçevesi (vurgu
+    // kenarı, yuvarlak köşe) dünya zemininin üstüne oturur. İçindeki bütün
+    // arayüz (etiket, seçici, diyalog) koyu stüdyo temasıyla çizilir.
     return StudioChrome(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
@@ -473,36 +551,9 @@ class FeltTable extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             border: Border.all(color: look.accent.withValues(alpha: 0.55), width: 1.4),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0, -0.2),
-                  radius: 1.1,
-                  colors: [Color(0xFF2F8A5B), Color(0xFF1C6143), Color(0xFF123F2C)],
-                  stops: [0, 0.65, 1],
-                ),
-              ),
-              child: CustomPaint(painter: _FeltGrain(), child: child),
-            ),
-          ),
+          child: KartTableSurface(theme: KartTableTheme.of(context), child: child),
         ),
       ),
     );
-  }
-}
-
-class _FeltGrain extends CustomPainter {
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-
-  @override
-  void paint(Canvas c, Size s) {
-    final r = math.Random(11);
-    final p = Paint()..color = Colors.white.withValues(alpha: 0.025);
-    for (var i = 0; i < 260; i++) {
-      c.drawCircle(Offset(r.nextDouble() * s.width, r.nextDouble() * s.height), 0.6 + r.nextDouble() * 0.9, p);
-    }
   }
 }

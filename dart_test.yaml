@@ -1,0 +1,3 @@
+tags:
+  shots:
+    skip: "yalnız ekran görüntüsü işinde (--tags shots --run-skipped)"

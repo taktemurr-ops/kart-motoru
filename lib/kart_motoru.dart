@@ -2,6 +2,8 @@
 library;
 
 export 'src/card_painter.dart';
+export 'src/table_theme.dart';
+export 'src/table_seats.dart';
 export 'src/cards.dart';
 export 'src/classic_variants.dart';
 export 'src/solitaire_engine.dart';

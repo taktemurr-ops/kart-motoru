@@ -10,9 +10,11 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'table_theme.dart';
 import 'cards.dart';
 import 'match_view.dart';
 import 'studio_chrome.dart';
+import 'table_seats.dart';
 import 'trick_ai.dart';
 import 'trick_engine.dart';
 import 'trick_rules.dart';
@@ -54,6 +56,17 @@ class _TrickViewState extends State<TrickHandView> {
   List<KCard> _shownTrick = const [];
   int _shownLeader = 0, _shownWinner = -1;
 
+  /// El bitince kartlar kazanana doğru toplanıyor.
+  bool _collecting = false;
+
+  /// Son tamamlanan el (gözden geçirme için).
+  List<KCard> _lastTrick = const [];
+  int _lastLeader = 0, _lastWin = -1;
+  bool _showLast = false;
+
+  /// El sonu özeti gösteriliyor: "Devam" ile sonuç ekranına geçilir.
+  RoundResult? _pending;
+
   PlayContext get ctx => widget.ctx;
   TrickRules get rules => level.rules;
 
@@ -70,7 +83,16 @@ class _TrickViewState extends State<TrickHandView> {
   bool get _multi => ctx.seats.isNotEmpty;
   MatchLink? get _match => ctx.match;
   bool _isLocal(int seat) => _multi ? ctx.role(seat) == SeatRole.local : seat == 0;
-  bool _isAi(int seat) => _multi ? (ctx.role(seat) == SeatRole.ai || (_match?.dropped.contains(seat) ?? false)) : seat != 0;
+  bool _isAi(int seat) =>
+      (_multi ? (ctx.role(seat) == SeatRole.ai || (_match?.dropped.contains(seat) ?? false)) : seat != 0) ||
+      (_pilot && seat == me);
+
+  /// Oyun testi: bu koltuğu da yapay zekâ oynar.
+  bool get _pilot => KartAutoPilot.on.value && _match == null;
+
+  void _onPilot() {
+    if (_pilot && mounted) _advance();
+  }
 
   int get me {
     final m = _match;
@@ -133,6 +155,7 @@ class _TrickViewState extends State<TrickHandView> {
       _shown = _isLocal(s.turn) ? s.turn : 0;
       _cover = true;
     }
+    KartAutoPilot.on.addListener(_onPilot);
     WidgetsBinding.instance.addPostFrameCallback((_) => _advance());
   }
 
@@ -140,6 +163,7 @@ class _TrickViewState extends State<TrickHandView> {
 
   @override
   void dispose() {
+    KartAutoPilot.on.removeListener(_onPilot);
     _timer?.cancel();
     _sub?.cancel();
     super.dispose();
@@ -153,7 +177,7 @@ class _TrickViewState extends State<TrickHandView> {
   Future<void> _advance() async {
     if (_busy) return;
     _busy = true;
-    while (mounted && !_ended && s.phase != TrickPhase.over && (!_isLocal(s.turn) || _queued(s.turn))) {
+    while (mounted && !_ended && s.phase != TrickPhase.over && (!_isLocal(s.turn) || _queued(s.turn) || (_pilot && s.turn == me))) {
       final seat = s.turn;
       final mt = _match;
       if (mt != null && (_queued(seat) || !_isAi(seat) || !mt.isHost)) {
@@ -190,7 +214,19 @@ class _TrickViewState extends State<TrickHandView> {
       _end();
     } else {
       setState(_maybeCover);
+      _autoLast();
     }
+  }
+
+  /// Son kart zorunlu hamledir: piyasadaki masalar gibi kendiliğinden oynanır.
+  void _autoLast() {
+    if (s.phase != TrickPhase.play || !_myTurn || s.hands[s.turn].length != 1) return;
+    if (rules.playActions(s, s.turn).isNotEmpty) return;
+    final seat = s.turn;
+    Future<void>.delayed(_pace, () {
+      if (!mounted || _ended || _busy || !_myTurn || s.turn != seat || s.hands[seat].length != 1) return;
+      _humanPlay(s.hands[seat].first);
+    });
   }
 
   /// Ağdan gelen hamle: "b:<ihale>" ya da "c:<geçerli kart sırası>".
@@ -230,11 +266,24 @@ class _TrickViewState extends State<TrickHandView> {
         _shownTrick = [...before, c];
         _shownLeader = leader;
         _shownWinner = s.lastWinner;
+        _lastTrick = _shownTrick;
+        _lastLeader = leader;
+        _lastWin = s.lastWinner;
+        _showLast = false;
       });
-      if (_inbox.isEmpty) await Future<void>.delayed(_pace * 1.6);
+      if (_inbox.isEmpty) await Future<void>.delayed(_pace * 1.4);
       if (!mounted) return;
       ctx.sfx(s.lastWinner == me || (rules.partnerships && s.lastWinner == (me + 2) % s.seats) ? Sfx.coin : Sfx.tap);
-      setState(() => _shownTrick = const []);
+      if (_inbox.isEmpty && !ctx.reducedMotion) {
+        // Kartlar el alanın önüne doğru toplanır.
+        setState(() => _collecting = true);
+        await Future<void>.delayed(const Duration(milliseconds: 320));
+        if (!mounted) return;
+      }
+      setState(() {
+        _shownTrick = const [];
+        _collecting = false;
+      });
     } else {
       setState(() {});
     }
@@ -258,6 +307,7 @@ class _TrickViewState extends State<TrickHandView> {
     setState(_maybeCover);
     _advance();
   }
+
 
   /// Kartsız hamle (ör. 29'da "koz açtır").
   void _humanAction(int a) {
@@ -332,7 +382,7 @@ class _TrickViewState extends State<TrickHandView> {
       final iWon = !tie && (_match != null ? team.contains(_match!.mySeat) : true);
       ctx.sfx(iWon ? Sfx.win : Sfx.lose);
       unawaited(_match?.finish(tie ? -1 : w, iWon: iWon));
-      ctx.finish(RoundResult(
+      _summary(RoundResult(
         won: iWon,
         score: iWon ? 300 : 30,
         seconds: _seconds,
@@ -344,7 +394,7 @@ class _TrickViewState extends State<TrickHandView> {
     final won = level.goal.check(rules, s);
     ctx.sfx(won ? Sfx.win : Sfx.lose);
     final mine = s.tricks[0] + (rules.partnerships ? s.tricks[2] : 0);
-    ctx.finish(RoundResult(
+    _summary(RoundResult(
       won: won,
       score: math.max(0, (rules.utility(s, 0) * 10).round() + mine * 20 + (won ? 300 : 0)),
       stars: TrickGameRules.stars(won: won, hints: _hints, undos: _undos),
@@ -356,46 +406,62 @@ class _TrickViewState extends State<TrickHandView> {
     ));
   }
 
+  /// El sonu tablosu: kim kaç el aldı, ihaleler ve puanlar; "Devam" ile
+  /// sonuç ekranı.
+  void _summary(RoundResult r) {
+    if (!mounted) {
+      ctx.finish(r);
+      return;
+    }
+    setState(() {
+      _pending = r;
+      _showLast = false;
+    });
+  }
+
   // ---- görünüm ----
 
-  CardStyle get _style => CardStyle(
-        backA: ctx.pieceColors.isNotEmpty ? ctx.pieceColors[0] : const Color(0xFF1F5E8C),
-        backB: ctx.pieceColors.length > 1 ? ctx.pieceColors[1] : const Color(0xFF2BB3B1),
-        colorBlind: ctx.colorBlind,
-      );
+  CardStyle get _style => kartCardStyle(context, ctx);
 
   /// Koltuğun ekrandaki yeri: 0 alt, sonra saat yönünde.
-  Alignment _seatAlign(int seat) {
-    final n = s.seats;
-    seat = (seat - me + n) % n;
-    if (n == 2) return seat == 0 ? Alignment.bottomCenter : Alignment.topCenter;
-    if (n == 3) return const [Alignment.bottomCenter, Alignment.centerLeft, Alignment.centerRight][seat];
-    return const [Alignment.bottomCenter, Alignment.centerLeft, Alignment.topCenter, Alignment.centerRight][seat % 4];
-  }
+  Alignment _seatAlign(int seat) => tableSeatAlign(seat, me, s.seats);
 
-  String _seatName(int seat) {
-    if (_multi && (ctx.passAndPlay || ctx.role(seat) != SeatRole.ai)) {
-      return seat == me && _match != null ? Strings.tx(ctx.lang, 'Sen', 'You') : ctx.seatName(seat);
-    }
-    if (seat == me) return Strings.tx(ctx.lang, 'Sen', 'You');
-    if (rules.partnerships && seat == (me + 2) % s.seats) return Strings.tx(ctx.lang, 'Eşin', 'Partner');
-    final a = _seatAlign(seat);
-    if (a == Alignment.centerLeft) return Strings.tx(ctx.lang, 'Sol', 'Left');
-    if (a == Alignment.centerRight) return Strings.tx(ctx.lang, 'Sağ', 'Right');
-    return Strings.tx(ctx.lang, 'Karşı', 'Across');
-  }
+  String _seatName(int seat) => tableSeatName(ctx, seat, me, s.seats);
 
-  Widget _seatBadge(int seat) {
+  bool _isPartner(int seat) => rules.partnerships && seat != me && seat == s.partnerOf(me);
+
+  List<Widget> _pills(int seat) {
     final bid = s.bids[seat];
-    final active = s.turn == seat && s.phase != TrickPhase.over;
-    return StudioSeatBadge(
-      title: _seatName(seat),
+    final lang = ctx.lang;
+    final decl = s.declarer == seat && s.phase != TrickPhase.bidding;
+    return [
+      SeatPill('${s.tricks[seat]}', icon: Icons.layers_rounded),
+      if (bid != null && (s.phase == TrickPhase.bidding || decl || !rules.hasBidding || s.declarer < 0))
+        SeatPill(rules.bidLabel(bid, lang),
+            icon: decl ? Icons.gavel_rounded : Icons.record_voice_over_rounded,
+            color: decl ? const Color(0xFFF2D38A) : null,
+            textColor: decl ? const Color(0xFF3A2A08) : null)
+      else if (decl)
+        SeatPill(Strings.tx(lang, 'İhale', 'Bid'), icon: Icons.gavel_rounded, color: const Color(0xFFF2D38A), textColor: const Color(0xFF3A2A08)),
+    ];
+  }
+
+  Widget _opponent(int seat, {required bool side}) {
+    final active = s.turn == seat && s.phase != TrickPhase.over && _pending == null;
+    return TableSeat(
+      name: _seatName(seat),
+      seat: (seat - me + s.seats) % s.seats,
+      style: _style,
+      lang: ctx.lang,
       active: active,
-      detail: '${Strings.tx(ctx.lang, 'El', 'Tricks')}: ${s.tricks[seat]}'
-          '${bid != null ? '  ·  ${rules.bidLabel(bid, ctx.lang)}' : ''}'
-          '${seat != me ? '  ·  🂠${s.hands[seat].length}' : ''}',
+      cards: s.hands[seat].length,
+      pills: _pills(seat),
+      partner: _isPartner(seat),
+      dealer: s.dealer == seat,
+      side: side,
+      compact: side,
       // Açık el (Null Ouvert): kartlar herkese görünür.
-      extra: seat != me && rules.openHand(s, seat)
+      extra: rules.openHand(s, seat)
           ? ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
               child: Padding(
@@ -407,29 +473,197 @@ class _TrickViewState extends State<TrickHandView> {
     );
   }
 
+  Widget _mySeat() {
+    final active = s.turn == me && s.phase != TrickPhase.over && _pending == null;
+    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      SeatAvatar(name: _seatName(me), seat: 0, active: active, size: 30),
+      const SizedBox(width: 4),
+      SeatNameTag(text: active && s.phase == TrickPhase.play ? Strings.tx(ctx.lang, 'Sıra sende', 'Your turn') : _seatName(me), active: active, maxWidth: 180),
+      const SizedBox(width: 4),
+      ..._pills(me).map((p) => Padding(padding: const EdgeInsets.only(left: 3), child: p)),
+      if (s.dealer == me) Padding(padding: const EdgeInsets.only(left: 4), child: DealerCoin(lang: ctx.lang)),
+    ]);
+  }
+
   Widget _card(KCard c, double w, {bool up = true, bool dim = false, bool hl = false}) => SizedBox(
         width: w,
         height: w * 1.4,
         child: CustomPaint(painter: _CardP(c, up, _style, dim, hl)),
       );
 
+  /// Ortadaki el: her kart oynayanın tarafına doğru, hafif dönük; kart
+  /// oynayanın yerinden kayarak gelir, el bitince kazanana doğru toplanır.
+  Widget _trickArea(double tw, List<KCard> cards, int leader, int winner, {bool review = false}) {
+    final boxW = tw * 3.5, boxH = tw * 1.4 * 2.55;
+    final wa = winner >= 0 ? _seatAlign(winner) : Alignment.center;
+    final fast = ctx.reducedMotion;
+    Widget area = SizedBox(
+      width: boxW,
+      height: boxH,
+      child: Stack(clipBehavior: Clip.none, children: [
+        for (var i = 0; i < cards.length; i++)
+          () {
+            final seat = (leader + i) % s.seats;
+            final a = _seatAlign(seat);
+            final win = winner == seat && (review || _shownTrick.isNotEmpty);
+            final card = Transform.rotate(
+              angle: a.x * 0.14 + (a.y < 0 ? 0.05 : -0.03) * (i.isEven ? 1 : -1),
+              child: AnimatedScale(
+                scale: win ? 1.1 : 1,
+                duration: const Duration(milliseconds: 200),
+                child: _card(cards[i], tw, hl: win),
+              ),
+            );
+            return Align(
+              alignment: Alignment(a.x * 0.74, a.y * 0.8),
+              child: review
+                  ? card
+                  : TweenAnimationBuilder<double>(
+                      key: ValueKey('t${s.played.length ~/ s.seats}_${cards[i]}'),
+                      tween: Tween(begin: 0, end: 1),
+                      duration: Duration(milliseconds: fast ? 1 : 280),
+                      curve: Curves.easeOutCubic,
+                      builder: (_, t, child) => Transform.translate(
+                        offset: Offset(a.x * boxW * 0.9, a.y * boxH * 0.9) * (1 - t),
+                        child: child,
+                      ),
+                      child: card,
+                    ),
+            );
+          }(),
+      ]),
+    );
+    if (review) return area;
+    final dur = Duration(milliseconds: _collecting && !fast ? 300 : 0);
+    return AnimatedSlide(
+      offset: _collecting ? Offset(wa.x * 0.9, wa.y * 0.9) : Offset.zero,
+      duration: dur,
+      curve: Curves.easeInCubic,
+      child: AnimatedOpacity(
+        opacity: _collecting ? 0 : 1,
+        duration: dur,
+        child: AnimatedScale(scale: _collecting ? 0.55 : 1, duration: dur, child: area),
+      ),
+    );
+  }
+
+  Widget _lastTrickPanel(double tw) => GestureDetector(
+        onTap: () => setState(() => _showLast = false),
+        child: StudioBoardPanel(
+          margin: const EdgeInsets.all(8),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              '${Strings.tx(ctx.lang, 'Son el', 'Last trick')} · ${_seatName(_lastWin)}',
+              style: const TextStyle(color: kStudioText, fontWeight: FontWeight.w900, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            _trickArea(tw * 0.9, _lastTrick, _lastLeader, _lastWin, review: true),
+          ]),
+        ),
+      );
+
+  Widget _summaryPanel() {
+    final r = _pending!;
+    final sc = rules.handScores(s);
+    final lang = ctx.lang;
+    const head = TextStyle(color: kStudioTextDim, fontSize: 12, fontWeight: FontWeight.w700);
+    const cell = TextStyle(color: kStudioText, fontSize: 15, fontWeight: FontWeight.w800);
+    Widget c(String t, TextStyle st, {TextAlign a = TextAlign.center}) =>
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: Text(t, style: st, textAlign: a));
+    final order = [for (var k = 0; k < s.seats; k++) (me + k) % s.seats];
+    return StudioBoardPanel(
+      margin: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(r.won ? Icons.emoji_events_rounded : Icons.sentiment_dissatisfied_rounded,
+                color: r.won ? const Color(0xFFFFD45A) : kStudioTextDim, size: 40),
+            Text(
+              r.headline ?? (r.won ? Strings.tx(lang, 'Eli kazandın!', 'You won the hand!') : Strings.tx(lang, 'Bu eli kaybettin', 'You lost this hand')),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: kStudioText, fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            if (rules.status(s, lang).isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(rules.status(s, lang), style: const TextStyle(color: kStudioTextDim, fontWeight: FontWeight.w600)),
+              ),
+            const SizedBox(height: 10),
+            Table(
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              columnWidths: const {0: FlexColumnWidth(2.2)},
+              children: [
+                TableRow(children: [
+                  c(Strings.tx(lang, 'Oyuncu', 'Player'), head, a: TextAlign.start),
+                  if (rules.hasBidding) c(Strings.tx(lang, 'İhale', 'Bid'), head),
+                  c(Strings.tx(lang, 'El', 'Tricks'), head),
+                  c(Strings.tx(lang, 'Puan', 'Score'), head),
+                ]),
+                for (final p in order)
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: p == me ? Colors.white.withValues(alpha: 0.08) : null,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    children: [
+                      Row(children: [
+                        Padding(
+                          padding: const EdgeInsets.all(3),
+                          child: SeatAvatar(name: _seatName(p), seat: (p - me + s.seats) % s.seats, size: 24),
+                        ),
+                        Flexible(
+                          child: Text(
+                            _isPartner(p) ? '${_seatName(p)} · ${Strings.tx(lang, 'Eş', 'Partner')}' : _seatName(p),
+                            overflow: TextOverflow.ellipsis,
+                            style: cell.copyWith(fontSize: 14),
+                          ),
+                        ),
+                      ]),
+                      if (rules.hasBidding)
+                        c(s.bids[p] == null ? '–' : (s.declarer == p ? '★ ' : '') + rules.bidLabel(s.bids[p]!, lang), cell),
+                      c('${s.tricks[p]}', cell),
+                      c('${sc[p]}', cell.copyWith(color: sc[p] < 0 ? const Color(0xFFFF8A80) : kStudioText)),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            StudioButton.hot(
+              label: Strings.tx(lang, 'Devam', 'Continue'),
+              onPressed: () {
+                final res = _pending;
+                if (res == null) return;
+                setState(() => _pending = null);
+                ctx.finish(res);
+              },
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
-    final trumpTxt = s.trump >= 0 && s.trump < 4 ? ['♠', '♥', '♦', '♣'][s.trump] : null;
     final status = rules.status(s, ctx.lang);
     return LayoutBuilder(builder: (context, cons) {
       final w = cons.maxWidth, h = cons.maxHeight;
+      final wide = w > h * 1.15;
+      final ts = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6);
       final handLen = math.max(1, s.hands[me].length);
-      final cw = math.min(76.0, math.min(w / (handLen * 0.62 + 0.6), h * 0.16));
-      final tw = math.min(70.0, w * 0.15);
-      final legal = _myTurn && s.phase == TrickPhase.play ? rules.legalPlays(s, s.turn).toSet() : <KCard>{};
+      final cw = math.min(wide ? 84.0 : 76.0, math.min(w / (handLen * 0.56 + 0.7), h * (wide ? 0.19 : 0.15) / ts));
+      final tw = math.min(wide ? 74.0 : 66.0, math.min(w * 0.16, h * (wide ? 0.13 : 0.1)));
+      final legal = _myTurn && s.phase == TrickPhase.play && _pending == null ? rules.legalPlays(s, s.turn).toSet() : <KCard>{};
       final trickCards = _shownTrick.isNotEmpty ? _shownTrick : s.trick;
       final trickLeader = _shownTrick.isNotEmpty ? _shownLeader : s.leader;
-      return Column(children: [
+      final board = Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
           child: Row(children: [
             Expanded(
               child: Text(level.goal.text(rules, s, ctx.lang),
@@ -437,14 +671,10 @@ class _TrickViewState extends State<TrickHandView> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
             ),
-            if (trumpTxt != null)
+            if (s.trump >= 0 && s.trump < 4)
               Padding(
                 padding: const EdgeInsetsDirectional.only(start: 8),
-                child: StudioTag(
-                  text: '${Strings.tx(ctx.lang, 'Koz', 'Trump')} $trumpTxt',
-                  // Kırmızı takımlar koyu zeminde açık tonla okunur.
-                  style: TextStyle(color: suitOnDark(s.trump)),
-                ),
+                child: TrumpBadge(suit: s.trump, label: Strings.tx(ctx.lang, 'Koz', 'Trump')),
               ),
             const SizedBox(width: 8),
             StudioTag(
@@ -454,58 +684,75 @@ class _TrickViewState extends State<TrickHandView> {
           ]),
         ),
         if (status.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text(status, style: const TextStyle(color: kStudioTextDim, fontSize: 12.5, fontWeight: FontWeight.w600)),
-          ),
+          Text(status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: kStudioTextDim, fontSize: 12.5, fontWeight: FontWeight.w700)),
         Expanded(
           child: Stack(children: [
             for (var k = 1; k < s.seats; k++)
-              Align(alignment: _seatAlign((me + k) % s.seats), child: Padding(padding: const EdgeInsets.all(6), child: _seatBadge((me + k) % s.seats))),
-            // Ortadaki el
+              () {
+                final seat = (me + k) % s.seats;
+                final a = _seatAlign(seat);
+                final side = a.x.abs() > 0.6 && a.y.abs() < 0.6;
+                return Align(
+                  alignment: a,
+                  child: Padding(padding: const EdgeInsets.all(4), child: _opponent(seat, side: side)),
+                );
+              }(),
             Center(
-              child: SizedBox(
-                width: tw * 3.4,
-                height: tw * 1.4 * 2.6,
-                child: Stack(children: [
-                  for (var i = 0; i < trickCards.length; i++)
-                    () {
-                      final seat = (trickLeader + i) % s.seats;
-                      final a = _seatAlign(seat);
-                      return Align(
-                        alignment: Alignment(a.x * 0.7, a.y * 0.75),
-                        child: AnimatedScale(
-                          scale: _shownWinner == seat && _shownTrick.isNotEmpty ? 1.08 : 1,
-                          duration: const Duration(milliseconds: 200),
-                          child: _card(trickCards[i], tw, hl: _shownWinner == seat && _shownTrick.isNotEmpty),
-                        ),
-                      );
-                    }(),
-                ]),
+              child: Padding(
+                padding: EdgeInsets.only(top: s.seats == 3 ? 0 : 30),
+                child: _trickArea(tw, trickCards, trickLeader, _shownWinner),
               ),
             ),
+            if (_showLast && _lastTrick.isNotEmpty) Center(child: _lastTrickPanel(tw)),
             if (s.phase == TrickPhase.bidding && _myTurn && !_busy)
               Align(
-                alignment: const Alignment(0, 0.55),
+                alignment: const Alignment(0, 0.75),
                 child: StudioBoardPanel(
                   margin: const EdgeInsets.all(10),
                   padding: const EdgeInsets.all(12),
                   // Çok sayıda teklif kısa ekrana sığmazsa panel kaydırılır.
                   child: SingleChildScrollView(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text(rules.bidPrompt(s, ctx.lang),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: kStudioText, fontSize: 17, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 8),
-                    Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
-                      for (final b in rules.legalBids(s, s.turn))
-                        StudioChoice(
-                          hinted: _hintBid == b,
-                          onPressed: () => _humanBid(b),
-                          label: rules.bidLabel(b, ctx.lang),
-                        ),
+                      Text(rules.bidPrompt(s, ctx.lang),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: kStudioText, fontSize: 17, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
+                        for (final b in rules.legalBids(s, s.turn))
+                          () {
+                            final lab = rules.bidLabel(b, ctx.lang);
+                            final suit = const ['♠', '♥', '♦', '♣'].indexOf(lab);
+                            if (suit >= 0) {
+                              // Koz seçimi: büyük renk düğmesi.
+                              return Semantics(
+                                button: true,
+                                label: '${Strings.tx(ctx.lang, 'Koz', 'Trump')} $lab',
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: () => _humanBid(b),
+                                  child: Container(
+                                    width: 60,
+                                    height: 72,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: CardStyle.paper,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                          color: _hintBid == b ? const Color(0xFFFFC53D) : const Color(0xFFD9D1C0),
+                                          width: _hintBid == b ? 3 : 1.5),
+                                    ),
+                                    child: CustomPaint(painter: SuitIconPainter(suit)),
+                                  ),
+                                ),
+                              );
+                            }
+                            return StudioChoice(hinted: _hintBid == b, onPressed: () => _humanBid(b), label: lab);
+                          }(),
+                      ]),
                     ]),
-                  ]),
                   ),
                 ),
               ),
@@ -526,9 +773,9 @@ class _TrickViewState extends State<TrickHandView> {
                 ),
             ]),
           ),
-        _seatBadge(me),
-        const SizedBox(height: 4),
-        // Oyuncunun eli
+        Padding(padding: const EdgeInsets.only(bottom: 2), child: _mySeat()),
+        // Oyuncunun eli: hafif yay biçiminde yelpaze; oynanabilenler yukarıda,
+        // oynanamayanlar soluk.
         if (_cover)
           StudioCover(
             height: cw * 1.4 + 18,
@@ -537,32 +784,43 @@ class _TrickViewState extends State<TrickHandView> {
             onTap: () => setState(() => _cover = false),
           )
         else
-        SizedBox(
-          height: cw * 1.4 + 18,
-          child: LayoutBuilder(builder: (context, c2) {
-            final n = s.hands[me].length;
-            final step = n <= 1 ? 0.0 : math.min(cw * 0.95, (c2.maxWidth - cw - 8) / (n - 1));
-            final total = cw + step * math.max(0, n - 1);
-            final left0 = (c2.maxWidth - total) / 2;
-            return Stack(children: [
-              for (var i = 0; i < n; i++)
-                () {
-                  final c = s.hands[me][i];
-                  final ok = legal.contains(c);
-                  return AnimatedPositioned(
-                    key: ValueKey(c),
-                    duration: const Duration(milliseconds: 180),
-                    left: left0 + step * i,
-                    top: ok ? 0 : 14,
-                    child: GestureDetector(
-                      onTap: () => _humanPlay(c),
-                      child: _card(c, cw, dim: s.phase == TrickPhase.play && _myTurn && !ok, hl: _hintCard == c),
-                    ),
-                  );
-                }(),
-            ]);
-          }),
-        ),
+          SizedBox(
+            height: cw * 1.4 + 18,
+            child: LayoutBuilder(builder: (context, c2) {
+              final n = s.hands[me].length;
+              final step = n <= 1 ? 0.0 : math.min(cw * 0.9, (c2.maxWidth - cw - 12) / (n - 1));
+              final total = cw + step * math.max(0, n - 1);
+              final left0 = (c2.maxWidth - total) / 2;
+              final spread = math.min(0.2, n * 0.016);
+              return Stack(clipBehavior: Clip.none, children: [
+                for (var i = 0; i < n; i++)
+                  () {
+                    final c = s.hands[me][i];
+                    final ok = legal.contains(c);
+                    final t = n <= 1 ? 0.0 : (i - (n - 1) / 2) / ((n - 1) / 2);
+                    final dim = s.phase == TrickPhase.play && _myTurn && !ok;
+                    return AnimatedPositioned(
+                      key: ValueKey(c),
+                      duration: const Duration(milliseconds: 180),
+                      left: left0 + step * i,
+                      top: (ok ? 0.0 : 14.0) + t * t * cw * 0.1,
+                      child: Transform.rotate(
+                        angle: t * spread,
+                        alignment: Alignment.bottomCenter,
+                        child: Semantics(
+                          button: ok,
+                          label: '${rankLabel(rankOf(c))} ${const ['♠', '♥', '♦', '♣'][suitOf(c)]}',
+                          child: GestureDetector(
+                            onTap: () => _humanPlay(c),
+                            child: _card(c, cw, dim: dim, hl: _hintCard == c),
+                          ),
+                        ),
+                      ),
+                    );
+                  }(),
+              ]);
+            }),
+          ),
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -571,11 +829,25 @@ class _TrickViewState extends State<TrickHandView> {
                 icon: Icons.lightbulb,
                 tooltip: ctx.t('hint')),
             StudioRoundAction(
+                onPressed: _lastTrick.isEmpty ? null : () => setState(() => _showLast = !_showLast),
+                icon: Icons.history_rounded,
+                tooltip: Strings.tx(ctx.lang, 'Son el', 'Last trick')),
+            StudioRoundAction(
                 onPressed: _undo.isNotEmpty && !_busy && !_ended ? _doUndo : null,
                 icon: Icons.undo,
                 tooltip: ctx.t('undo')),
           ]),
         ),
+      ]);
+      return Stack(children: [
+        board,
+        if (_pending != null)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.45),
+              child: Center(child: _summaryPanel()),
+            ),
+          ),
       ]);
     });
   }

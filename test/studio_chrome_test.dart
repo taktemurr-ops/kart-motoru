@@ -43,7 +43,7 @@ double _contrast(Color a, Color b) {
 /// Görünümdeki bütün yazılar: koyu stüdyo zemininde okunur olmalı (siyah
 /// yazı yalnız kendi açık zeminini çizen hap/rozetlerde olur).
 void _expectLightText(WidgetTester t) {
-  final ok = {StudioChoice, StudioSeatBadge, StudioButton};
+  final ok = {StudioChoice, StudioSeatBadge, StudioButton, SeatPill, DealerCoin, TrumpBadge, SeatNameTag};
   for (final e in find.byType(RichText).evaluate()) {
     final r = e.renderObject as RenderParagraph;
     final c = r.text.style?.color;

@@ -9,8 +9,10 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'table_theme.dart';
 import 'match_view.dart';
 import 'studio_chrome.dart';
+import 'table_seats.dart';
 import 'tile_painter.dart';
 import 'cards.dart';
 import 'table_ai.dart';
@@ -71,7 +73,16 @@ class _TableViewState extends State<TableHandView> {
   bool get _multi => ctx.seats.isNotEmpty;
   MatchLink? get _match => ctx.match;
   bool _isLocal(int seat) => _multi ? ctx.role(seat) == SeatRole.local : seat == 0;
-  bool _isAi(int seat) => _multi ? (ctx.role(seat) == SeatRole.ai || (_match?.dropped.contains(seat) ?? false)) : seat != 0;
+  bool _isAi(int seat) =>
+      (_multi ? (ctx.role(seat) == SeatRole.ai || (_match?.dropped.contains(seat) ?? false)) : seat != 0) ||
+      (_pilot && seat == me);
+
+  /// Oyun testi: bu koltuğu da yapay zekâ oynar.
+  bool get _pilot => KartAutoPilot.on.value && _match == null;
+
+  void _onPilot() {
+    if (_pilot && mounted) _advance();
+  }
 
   /// Eli ekranda gösterilen koltuk.
   int get me {
@@ -131,11 +142,13 @@ class _TableViewState extends State<TableHandView> {
       _shown = _isLocal(s.turn) ? s.turn : 0;
       _cover = true;
     }
+    KartAutoPilot.on.addListener(_onPilot);
     WidgetsBinding.instance.addPostFrameCallback((_) => _advance());
   }
 
   @override
   void dispose() {
+    KartAutoPilot.on.removeListener(_onPilot);
     _timer?.cancel();
     _sub?.cancel();
     super.dispose();
@@ -148,7 +161,7 @@ class _TableViewState extends State<TableHandView> {
   Future<void> _advance() async {
     if (_busy) return;
     _busy = true;
-    while (mounted && !_ended && !s.over && (!_isLocal(s.turn) || _queued(s.turn))) {
+    while (mounted && !_ended && !s.over && (!_isLocal(s.turn) || _queued(s.turn) || (_pilot && s.turn == me))) {
       final seat = s.turn;
       final mt = _match;
       TAction act;
@@ -279,12 +292,7 @@ class _TableViewState extends State<TableHandView> {
     ));
   }
 
-  CardStyle get _style => CardStyle(
-        backA: ctx.pieceColors.isNotEmpty ? ctx.pieceColors[0] : const Color(0xFF1F5E8C),
-        backB: ctx.pieceColors.length > 1 ? ctx.pieceColors[1] : const Color(0xFF2BB3B1),
-        colorBlind: ctx.colorBlind,
-        spanish: rules.spanishDeck,
-      );
+  CardStyle get _style => kartCardStyle(context, ctx, spanish: rules.spanishDeck);
 
   Widget _card(KCard c, double w, {bool up = true, bool dim = false, bool hl = false}) => SizedBox(
         width: w,
@@ -311,6 +319,65 @@ class _TableViewState extends State<TableHandView> {
       detail: '${seat != me ? '🂠${s.hands[seat].length}  ' : ''}'
           '${Strings.tx(ctx.lang, 'Puan', 'Points')}: ${rules.finalScores(s)[seat]}',
     );
+  }
+
+  Widget _cardTable(double pw) {
+    final n = s.seats;
+    final piles = Wrap(spacing: 14, runSpacing: 10, alignment: WrapAlignment.center, children: [
+      for (var i = 0; i < rules.pileViews.length && i < s.piles.length; i++) _pile(i, pw),
+    ]);
+    return LayoutBuilder(builder: (context, _) {
+      final top = n == 2 || n >= 4;
+      final sides = n >= 3;
+      return Stack(children: [
+        for (var k = 1; k < n; k++)
+          () {
+            final seat = (me + k) % n;
+            final a = tableSeatAlign(seat, me, n);
+            final side = a.x.abs() > 0.6 && a.y.abs() < 0.6;
+            return Align(
+              alignment: a,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: TableSeat(
+                  name: tableSeatName(ctx, seat, me, n),
+                  seat: k,
+                  style: _style,
+                  lang: ctx.lang,
+                  active: s.turn == seat && !s.over,
+                  cards: s.hands[seat].length,
+                  partner: rules.partnerships && seat == (me + 2) % n,
+                  side: side,
+                  compact: side,
+                  pills: [
+                    SeatPill('${rules.finalScores(s)[seat]}', icon: Icons.star_rounded),
+                    if (s.captured[seat].isNotEmpty) SeatPill('${s.captured[seat].length}', icon: Icons.layers_rounded),
+                  ],
+                ),
+              ),
+            );
+          }(),
+        Positioned.fill(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(sides ? 96 : 8, top ? 112 : 8, sides ? 96 : 8, 4),
+            child: Center(child: SingleChildScrollView(child: piles)),
+          ),
+        ),
+      ]);
+    });
+  }
+
+  Widget _mySeat() {
+    final active = s.turn == me && !s.over;
+    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      SeatAvatar(name: tableSeatName(ctx, me, me, s.seats), seat: 0, active: active, size: 30),
+      const SizedBox(width: 4),
+      SeatNameTag(text: active ? Strings.tx(ctx.lang, 'Sıra sende', 'Your turn') : tableSeatName(ctx, me, me, s.seats), active: active, maxWidth: 180),
+      const SizedBox(width: 4),
+      SeatPill('${rules.finalScores(s)[me]}', icon: Icons.star_rounded),
+      if (s.captured[me].isNotEmpty)
+        Padding(padding: const EdgeInsets.only(left: 3), child: SeatPill('${s.captured[me].length}', icon: Icons.layers_rounded)),
+    ]);
   }
 
   Widget _pile(int i, double cw) {
@@ -429,21 +496,26 @@ class _TableViewState extends State<TableHandView> {
           Text(status,
               style: const TextStyle(color: kStudioTextDim, fontSize: 12.5, fontWeight: FontWeight.w600),
               textAlign: TextAlign.center),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Wrap(spacing: 8, runSpacing: 6, alignment: WrapAlignment.center, children: [
-            for (var k = 1; k < s.seats; k++) _badge((me + k) % s.seats),
-          ]),
-        ),
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              child: Wrap(spacing: 14, runSpacing: 10, alignment: WrapAlignment.center, children: [
-                for (var i = 0; i < rules.pileViews.length && i < s.piles.length; i++) _pile(i, pw),
-              ]),
+        if (rules.tileStyle != kTileCard) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Wrap(spacing: 8, runSpacing: 6, alignment: WrapAlignment.center, children: [
+              for (var k = 1; k < s.seats; k++) _badge((me + k) % s.seats),
+            ]),
+          ),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                child: Wrap(spacing: 14, runSpacing: 10, alignment: WrapAlignment.center, children: [
+                  for (var i = 0; i < rules.pileViews.length && i < s.piles.length; i++) _pile(i, pw),
+                ]),
+              ),
             ),
           ),
-        ),
+        ] else
+          // Kart masası: rakipler masanın çevresinde (avatar, ad, kapalı kart
+          // yelpazesi, puan), yığınlar ortada.
+          Expanded(child: _cardTable(pw)),
         if (buttons.isNotEmpty)
           SizedBox(
             height: 52,
@@ -461,7 +533,7 @@ class _TableViewState extends State<TableHandView> {
                 ),
             ]),
           ),
-        _badge(me),
+        if (rules.tileStyle != kTileCard) _badge(me) else _mySeat(),
         const SizedBox(height: 4),
         if (_cover)
           _CoverCard(

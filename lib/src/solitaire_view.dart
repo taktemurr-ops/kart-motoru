@@ -8,6 +8,7 @@ import 'package:studio_core/core/game_rules.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'table_theme.dart';
 import 'cards.dart';
 import 'solitaire_engine.dart';
 import 'solitaire_rules.dart';
@@ -75,11 +76,7 @@ class _SolitaireViewState extends State<SolitaireView> {
 
   void _persist() => ctx.saveResume({'snap': game.serialize(), 'secs': _seconds, 'hints': _hints, 'undos': _undos});
 
-  CardStyle get _style => CardStyle(
-        backA: ctx.pieceColors.isNotEmpty ? ctx.pieceColors[0] : const Color(0xFF1F5E8C),
-        backB: ctx.pieceColors.length > 1 ? ctx.pieceColors[1] : const Color(0xFF2BB3B1),
-        colorBlind: ctx.colorBlind,
-      );
+  CardStyle get _style => kartCardStyle(context, ctx);
 
   // ---- yerleşim ----
 

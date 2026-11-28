@@ -9,6 +9,7 @@ import 'package:studio_core/core/net_sync.dart';
 import 'package:studio_core/core/net_texts.dart';
 
 import 'card_painter.dart';
+import 'table_theme.dart';
 import 'cards.dart';
 import 'kart_texts.dart';
 import 'realtime.dart';
@@ -251,11 +252,7 @@ class _RealtimeViewState extends State<RealtimeView> {
     ));
   }
 
-  CardStyle get _style => CardStyle(
-        backA: ctx.pieceColors.isNotEmpty ? ctx.pieceColors[0] : const Color(0xFF1F5E8C),
-        backB: ctx.pieceColors.length > 1 ? ctx.pieceColors[1] : const Color(0xFF2BB3B1),
-        colorBlind: ctx.colorBlind,
-      );
+  CardStyle get _style => kartCardStyle(context, ctx);
 
   Widget _card(KCard? c, double w, {bool up = true, bool hl = false, VoidCallback? onTap}) {
     final body = SizedBox(
