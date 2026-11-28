@@ -9,6 +9,8 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'okey.dart';
+import 'okey_texts.dart';
 import 'match_view.dart';
 import 'studio_chrome.dart';
 import 'tile_painter.dart';
@@ -16,6 +18,8 @@ import 'cards.dart';
 import 'table_ai.dart';
 import 'table_engine.dart';
 import 'table_rules.dart';
+
+part 'okey_table.dart';
 
 /// Sıra tabanlı masa oyunlarının ortak ekranı: rakip koltukları, ortadaki
 /// yığınlar, oyuncunun eli ve kartsız hamle düğmeleri.
@@ -52,6 +56,17 @@ class _TableViewState extends State<TableHandView> {
   bool _ended = false, _busy = false;
   TAction? _hint;
   final Set<KCard> _selected = {};
+
+  // ---- Taş masası (Okey ailesi, okey_table.dart) -------------------------------
+  List<KCard?> _slots = [];
+  int _slotCols = 0, _slotSeat = -1;
+  KCard? _fresh;
+  bool _summary = false, _summaryDone = false;
+  String _legalKey = '', _progKey = '';
+  List<TAction> _legalCache = const [];
+  (int, int) _prog = (0, 0);
+  bool get _tileTable => rules.tileStyle == kTileOkey;
+  void _set(VoidCallback f) => setState(f);
 
   PlayContext get ctx => widget.ctx;
   TableRules get rules => level.rules;
@@ -231,13 +246,20 @@ class _TableViewState extends State<TableHandView> {
   Future<void> _useHint() async {
     if (_ended || _busy || !_isLocal(s.turn) || _cover || !await ctx.requestHint()) return;
     _hints++;
-    final adv = TableAI(rules, 20, SeededRandom(mixSeed([level.seed, _seconds, 5])));
+    // İpucu her zaman en usta oyuncudan (düşük düzey botların zayıflığı yok).
+    final adv = TableAI(_tileTable ? rules.forDifficulty(10) : rules, 20, SeededRandom(mixSeed([level.seed, _seconds, 5])));
     setState(() => _hint = adv.choose(s));
     _persist();
   }
 
   void _end() {
     if (_ended) return;
+    if (_tileTable && !_summaryDone) {
+      // Taş masasında el sonu tablosu: kim bitirdi, kimde ne kaldı, cezalar.
+      _timer?.cancel();
+      if (!_summary) setState(() => _summary = true);
+      return;
+    }
     _ended = true;
     _timer?.cancel();
     final over = widget.onHandOver;
@@ -391,7 +413,8 @@ class _TableViewState extends State<TableHandView> {
   }
 
   @override
-  Widget build(BuildContext context) => FeltTable(child: Builder(builder: _build));
+  Widget build(BuildContext context) =>
+      _tileTable ? _tileFrame(Builder(builder: _okeyBuild)) : FeltTable(child: Builder(builder: _build));
 
   Widget _build(BuildContext context) {
     final legal = _isLocal(s.turn) && s.turn == me && !s.over && !_busy && !_cover ? rules.legalActions(s) : const <TAction>[];

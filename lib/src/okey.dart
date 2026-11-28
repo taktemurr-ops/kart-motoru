@@ -351,7 +351,27 @@ class OkeyRules extends TableRules {
   /// Göstergenin eşini elinde tutan gösterir: diğerleri 1 puan kaybeder
   /// (maçta her zaman; Katlamalı'da bölümde de).
   final bool showIndicator;
-  const OkeyRules({this.players = 4, this.partners = false, this.doubling = false, this.showIndicator = false});
+
+  /// Rakip ustalığı (1..10): düşük düzeyde bot ara sıra zayıf taş atar,
+  /// işine yarayan atığı kaçırır; 10'da hep en iyi bildiğini oynar.
+  final int skill;
+  const OkeyRules({this.players = 4, this.partners = false, this.doubling = false, this.showIndicator = false, this.skill = 10});
+
+  /// Taş oyunlarında Monte Carlo benzetimi yerine güçlü sezgisel oyuncu: el
+  /// çok uzun, rastgele benzetimler okey atmak gibi garip hamleler seçebiliyordu.
+  @override
+  bool get heuristicAI => true;
+
+  @override
+  TableRules forDifficulty(int difficulty) =>
+      OkeyRules(players: players, partners: partners, doubling: doubling, showIndicator: showIndicator, skill: difficulty.clamp(1, 10));
+
+  /// Zayıf hamle olasılığı: 1. düzeyde %45, 10. düzeyde hiç.
+  bool blunder(SeededRandom r) => r.nextInt(100) < (10 - skill.clamp(1, 10)) * 5;
+
+  /// Masada her koltuğun son attığı taş (+1; 0 boş): köşelerde gösterilir.
+  static const discardVar = 4;
+  int lastDiscard(TableState s, int seat) => s.vars.length > discardVar + seat ? s.vars[discardVar + seat] - 1 : -1;
 
   /// Maç: herkes 20 puanla başlar. Biri bitirince diğerleri 2 (okey atarak
   /// ya da çiftle 4) puan kaybeder; göstergeyi gösteren için diğerleri 1
@@ -361,7 +381,7 @@ class OkeyRules extends TableRules {
 
   @override
   TableRules rulesForMatch(int deal, List<List<int>> history) =>
-      OkeyRules(players: players, partners: partners, doubling: doubling, showIndicator: true);
+      OkeyRules(players: players, partners: partners, doubling: doubling, showIndicator: true, skill: skill);
 
   /// Elin kazandırdığı puanlar diğerlerinden düşülür (eşli oyunda karşı taraftan).
   @override
@@ -391,6 +411,9 @@ class OkeyRules extends TableRules {
   static const _labelsIndicator = [
     'Gösterge', 'Indicator', 'Anzeiger', 'Indicador', 'Indicateur', 'المؤشر', 'نشانگر', 'מחוון', 'اشارہ', 'Указатель', 'Покажчик', 'Wskaźnik', 'Ukazatel', 'Indicator', 'Jelző', 'Δείκτης', 'Indicatore', 'Indicador', 'Wijzer', 'Visare', 'Viser', 'Viser', 'Osoitin', '表示牌', '표시패', '指示牌', 'संकेतक', 'নির্দেশক', 'Penunjuk', 'Penunjuk', 'ตัวบอก', 'Quân chỉ', 'Tagapagpahiwatig',
   ];
+
+  /// Göstergenin 33 dilde adı.
+  static const indicatorLabels = _labelsIndicator;
 
   @override
   List<PileView> get pileViews => const [
@@ -486,6 +509,7 @@ class OkeyRules extends TableRules {
       case 1:
         if (a.target == 1 && s.piles[1].isNotEmpty) {
           h.add(s.piles[1].removeLast());
+          _setDiscard(s, (p - 1 + seats) % seats, -1);
         } else {
           if (s.piles[0].isEmpty) {
             s.over = true; // deste bitti: kimse kazanmadı
@@ -500,6 +524,7 @@ class OkeyRules extends TableRules {
         final kindDone = _finishKind(s, h, t);
         h.remove(t);
         s.piles[1].add(t);
+        _setDiscard(s, p, t);
         var pts = 2;
         final okeyOut = okeyMeaning(t, kind(s)) < 0;
         if (doubling) {
@@ -514,9 +539,14 @@ class OkeyRules extends TableRules {
       default:
         h.remove(a.cards.first);
         s.piles[1].add(a.cards.first);
+        _setDiscard(s, p, a.cards.first);
         s.vars[0] = 0;
         s.turn = (p + 1) % seats;
     }
+  }
+
+  void _setDiscard(TableState s, int seat, KCard t) {
+    if (s.vars.length > discardVar + seat) s.vars[discardVar + seat] = t + 1;
   }
 
   @override
@@ -542,7 +572,7 @@ class OkeyRules extends TableRules {
         if (okeyMeaning(t, kind(s)) < 0) return const TAction(1, [], 1);
         final before = okeyCoverPlan(meanings(s, h)).$1;
         final after = okeyCoverPlan(meanings(s, [...h, t])).$1;
-        if (after > before) return const TAction(1, [], 1);
+        if (after > before && !blunder(r)) return const TAction(1, [], 1);
       }
       return const TAction(1, [], 0);
     }
@@ -560,19 +590,23 @@ class OkeyRules extends TableRules {
         if (_finishKind(s, h, t) > 0) return TAction(9, [t]);
       }
     }
-    // Dışarıda kalanlardan en az komşusu olanı at.
-    var best = -1, bv = 1 << 30;
+    // Dışarıda kalanlardan en az komşusu olanı at. Sonraki oyuncunun hemen
+    // alabileceği (son attığı taşın komşusu) taştan biraz kaçınılır.
+    final nextLast = lastDiscard(s, (p + 1) % seats);
+    final nm = nextLast < 0 ? -9 : okeyMeaning(nextLast, kind(s));
+    final ranked = <(int, int)>[];
     for (var i = 0; i < h.length; i++) {
       if (m[i] < 0) continue;
       final out = skipped.contains(m[i]);
-      final v = okeyKeepScore(m, i) * 4 + (out ? 0 : 1000) + r.nextInt(3);
-      if (v < bv) {
-        bv = v;
-        best = i;
-      }
+      var v = okeyKeepScore(m, i) * 4 + (out ? 0 : 1000) + r.nextInt(3);
+      if (nm >= 0 && m[i] == nm) v -= 2; // aynısını atmış: işine yaramıyor
+      ranked.add((v, i));
     }
-    if (best < 0) best = 0;
-    return TAction(0, [h[best]]);
+    if (ranked.isEmpty) return TAction(0, [h.first]);
+    ranked.sort((a, b) => a.$1.compareTo(b.$1));
+    final loose = ranked.where((e) => e.$1 < 1000).length;
+    final pick = blunder(r) && loose > 1 ? ranked[1 + r.nextInt(math.min(2, loose - 1))].$2 : ranked.first.$2;
+    return TAction(0, [h[pick]]);
   }
 
   @override
@@ -585,14 +619,31 @@ class OkeyRules extends TableRules {
 
 /// 101 Okey: 21 taş (başlayan 22). Elini açmak için perlerin toplamı en az
 /// 101 olmalı ya da en az beş çift açılmalı. Açan oyuncu yeni per açabilir ve
-/// masadaki perlere taş işleyebilir. Elini ilk bitiren kazanır; ceza puanları:
-/// açmayan 202, açan elindeki taşların toplamı, bitiren -101 (okey atarak
-/// bitirirse -202). Çiftle açanın cezası iki katıdır.
+/// masadaki perlere taş işleyebilir; çiftle açan yalnız çift açar, serilere ve
+/// gruplara işleyebilir. Atıktan alınan taş aynı el kullanılmalıdır (açmak,
+/// per açmak ya da işlemek için). Okey atmak ve masadaki bir pere işlenebilen
+/// taşı atmak 101 ceza yazar.
 ///
-/// piles: 0 deste, 1 atık, 2 gösterge, 3 masadaki perler (gösterim), 4+ perler.
-/// vars: 0 aşama, 1 okey türü, 2 açanlar (bit), 3 çiftle açanlar (bit).
+/// El sonu (pagat.com/rummy/okey101.html): bitiren -101; açmayan 202; açan
+/// elindeki taşların toplamı (çiftle açan iki katı), elde kalan her okey 101.
+/// Okey atarak ya da çiftle bitirmek cezaları ikiye katlar (ikisi birden dört
+/// kat; açmayana en çok 404). Elden bitme (aynı turda açıp bitirme): bitiren
+/// -202, diğerleri 404 (okeyle -404 / 808). Deste biterse: tek el bölümde
+/// eldeki taşlar sayılır; maçta yalnız elde kalan okeyler (101) yazılır.
+///
+/// piles: 0 deste, 1 atık, 2 gösterge, 3 masadaki perler (düz liste), 4+
+/// perler (ilk eleman sahibi: [kMeldOwner] + koltuk).
+/// vars: 0 aşama, 1 okey türü, 2 açanlar (bit), 3 çiftle açanlar (bit),
+/// 4..7 koltukların son attığı taş + 1, 8 atıktan alınıp kullanılması
+/// gereken taş + 1, 9 bu turda açanlar (bit), 10..13 oyun içi ceza sayısı.
 class Okey101Rules extends OkeyRules {
-  const Okey101Rules({super.players = 4, super.partners = false});
+  const Okey101Rules({super.players = 4, super.partners = false, super.skill = 10});
+
+  static const kMeldOwner = 9000;
+  static const _mustVar = 8, _nowVar = 9, _penVar = 10;
+
+  @override
+  TableRules forDifficulty(int difficulty) => Okey101Rules(players: players, partners: partners, skill: difficulty.clamp(1, 10));
 
   /// Maç: önceden belirlenen sayıda el (9) oynanır; ceza puanları toplanır,
   /// en az cezası olan kazanır.
@@ -602,6 +653,9 @@ class Okey101Rules extends OkeyRules {
   @override
   TableRules rulesForMatch(int deal, List<List<int>> history) => this;
 
+  /// Oyun içi cezalar (okey ya da işlek taş atmak), 101'in katı.
+  int inPlayPenalty(TableState s, int p) => s.vars.length > _penVar + p ? s.vars[_penVar + p] * 101 : 0;
+
   /// Elin ceza puanları. Deste biter de kimse bitiremezse el sayılmaz;
   /// yalnız elinde okey (joker) tutan, her biri için 101 ceza yazar.
   @override
@@ -609,7 +663,7 @@ class Okey101Rules extends OkeyRules {
     final finished = s.hands.any((h) => h.isEmpty);
     final pen = <int>[
       for (var p = 0; p < seats; p++)
-        finished ? -s.scores[p] : 101 * s.hands[p].where((t) => okeyMeaning(t, kind(s)) < 0).length,
+        finished ? -s.scores[p] : 101 * s.hands[p].where((t) => okeyMeaning(t, kind(s)) < 0).length + inPlayPenalty(s, p),
     ];
     if (partners && !finished) {
       return [for (var p = 0; p < seats; p++) pen[p] + pen[(p + 2) % seats]];
@@ -648,7 +702,7 @@ class Okey101Rules extends OkeyRules {
       }
     }
     hands[starter].add(deck.removeLast());
-    final s = TableState(seats: seats, hands: hands, piles: [deck, [], [ind], []], turn: starter);
+    final s = TableState(seats: seats, hands: hands, piles: [deck, [], [ind], []], turn: starter, vars: List.filled(14, 0));
     s.vars[1] = okeyKindFrom(ind);
     s.vars[0] = 1;
     for (final h in hands) {
@@ -659,11 +713,23 @@ class Okey101Rules extends OkeyRules {
 
   bool opened(TableState s, int p) => (s.vars[2] >> p) & 1 == 1;
   bool pairOpened(TableState s, int p) => (s.vars[3] >> p) & 1 == 1;
-  List<List<KCard>> melds(TableState s) => s.piles.length > 4 ? s.piles.sublist(4) : const [];
+
+  /// Masadaki perler (sahip işareti olmadan).
+  List<List<KCard>> melds(TableState s) =>
+      [for (var i = 4; i < s.piles.length; i++) s.piles[i].where((t) => t < kMeldOwner).toList()];
+
+  /// Perin sahibi (açan koltuk); bilinmiyorsa -1.
+  int meldOwner(TableState s, int i) {
+    final p = s.piles[4 + i];
+    return p.isNotEmpty && p.first >= kMeldOwner ? p.first - kMeldOwner : -1;
+  }
+
+  /// Atıktan alınıp bu el kullanılması gereken taş (yoksa -1).
+  int mustUse(TableState s) => s.vars.length > _mustVar ? s.vars[_mustVar] - 1 : -1;
 
   int value(TableState s, KCard t) {
     final m = okeyMeaning(t, kind(s));
-    return m < 0 ? 25 : m % 13 + 1;
+    return m < 0 ? 101 : m % 13 + 1;
   }
 
   /// Eldeki aday gruplar (set ve seriler, jokerle).
@@ -712,6 +778,7 @@ class Okey101Rules extends OkeyRules {
   /// Birbirine değmeyen grupların en değerli seçimi.
   (List<List<KCard>>, int) bestGroups(TableState s, List<KCard> hand) {
     final cands = candidates(s, hand)..sort((a, b) => b.length.compareTo(a.length));
+    final vals = [for (final g in cands) okeyGroupValue(meanings(s, g))];
     var best = <List<KCard>>[];
     var bestV = 0;
     final cur = <List<KCard>>[];
@@ -728,13 +795,33 @@ class Okey101Rules extends OkeyRules {
         if (g.any(used.contains)) continue;
         used.addAll(g);
         cur.add(g);
-        go(k + 1, v + okeyGroupValue(meanings(s, g)));
+        go(k + 1, v + vals[k]);
         cur.removeLast();
         used.removeAll(g);
       }
     }
 
     go(0, 0);
+    return (best, bestV);
+  }
+
+  /// [must] taşını içeren en değerli açılış (taş başa alınır ki adaylar onu
+  /// seçsin). Eli tümüyle bitiren açılışlar sayılmaz (bir taş atılmalı).
+  (List<List<KCard>>, int) openPlan(TableState s, List<KCard> hand, {KCard? must}) {
+    if (must == null) return bestGroups(s, hand);
+    final h = [must, ...hand.where((t) => t != must)];
+    var best = <List<KCard>>[];
+    var bestV = 0;
+    for (final g in candidates(s, h)) {
+      if (!g.contains(must)) continue;
+      final rest = [...h]..removeWhere(g.contains);
+      final (gs, v) = bestGroups(s, rest);
+      final total = v + okeyGroupValue(meanings(s, g));
+      if (total > bestV) {
+        bestV = total;
+        best = [g, ...gs];
+      }
+    }
     return (best, bestV);
   }
 
@@ -761,6 +848,34 @@ class Okey101Rules extends OkeyRules {
     return out;
   }
 
+  /// Taş masadaki (çift olmayan) bir pere işlenebilir mi.
+  bool canAddToTable(TableState s, KCard t) {
+    for (final m in melds(s)) {
+      if (m.length > 2 && okeyGroupValue(meanings(s, [...m, t])) > 0) return true;
+    }
+    return false;
+  }
+
+  /// Atıktaki taş alınabilir mi: aynı el kullanılabilmeli.
+  bool canTake(TableState s, int p) {
+    if (s.piles[1].isEmpty) return false;
+    final t = s.piles[1].last;
+    final h = s.hands[p];
+    final after = [t, ...h];
+    if (opened(s, p)) {
+      if (canAddToTable(s, t)) return true;
+      if (pairOpened(s, p)) {
+        final m = okeyMeaning(t, kind(s));
+        return h.length >= 2 && (m < 0 ? h.isNotEmpty : h.any((x) => okeyMeaning(x, kind(s)) == m || okeyMeaning(x, kind(s)) < 0));
+      }
+      return candidates(s, after).any((g) => g.contains(t) && g.length < after.length);
+    }
+    final (gs, v) = openPlan(s, after, must: t);
+    if (v >= 101 && gs.fold<int>(0, (a, g) => a + g.length) < after.length) return true;
+    final ps = pairsIn(s, after);
+    return ps.length >= 5 && ps.length * 2 < after.length && ps.any((g) => g.contains(t));
+  }
+
   static const _sep = -1;
 
   @override
@@ -771,38 +886,38 @@ class Okey101Rules extends OkeyRules {
     if (s.vars[0] == 0) {
       return [
         const TAction(1, [], 0),
-        if (s.piles[1].isNotEmpty && opened(s, p)) const TAction(1, [], 1),
+        if (canTake(s, p)) const TAction(1, [], 1),
       ];
     }
+    final must = mustUse(s);
     final out = <TAction>[];
     if (!opened(s, p)) {
-      final (gs, v) = bestGroups(s, h);
+      final (gs, v) = openPlan(s, h, must: must >= 0 ? must : null);
       if (v >= 101 && gs.fold<int>(0, (a, g) => a + g.length) < h.length) {
         out.add(TAction(5, [for (final g in gs) ...[...g, _sep]]));
       }
       final ps = pairsIn(s, h);
-      if (ps.length >= 5 && ps.length * 2 < h.length) out.add(TAction(6, [for (final g in ps) ...[...g, _sep]]));
+      if (ps.length >= 5 && ps.length * 2 < h.length && (must < 0 || ps.any((g) => g.contains(must)))) {
+        out.add(TAction(6, [for (final g in ps) ...[...g, _sep]]));
+      }
     } else {
       final rest = h.length;
-      if (pairOpened(s, p)) {
-        for (final g in pairsIn(s, h)) {
-          if (g.length < rest) out.add(TAction(2, g));
-        }
-      } else {
-        for (final g in candidates(s, h)) {
-          if (g.length < rest) out.add(TAction(2, g));
-        }
+      final hh = must >= 0 ? [must, ...h.where((t) => t != must)] : h;
+      for (final g in pairOpened(s, p) ? pairsIn(s, hh) : candidates(s, hh)) {
+        if (g.length < rest && (must < 0 || g.contains(must))) out.add(TAction(2, g));
       }
       final ms = melds(s);
       final seen = <String>{};
       for (final t in h) {
         if (h.length <= 1) break;
+        if (must >= 0 && t != must) continue;
         for (var i = 0; i < ms.length; i++) {
           if (ms[i].length == 2) continue; // çiftlere işlenmez
           if (okeyGroupValue(meanings(s, [...ms[i], t])) > 0 && seen.add('${okeyMeaning(t, kind(s))}/$i')) out.add(TAction(3, [t], i));
         }
       }
     }
+    if (must >= 0 && out.isNotEmpty) return out;
     final seen = <int>{};
     for (final t in h) {
       final key = isOkeyFalseJoker(t) ? 200 : t % 52;
@@ -826,10 +941,18 @@ class Okey101Rules extends OkeyRules {
     return out;
   }
 
+  /// Açılışın grupları (düğme ve önizleme için).
+  List<List<KCard>> openGroups(TAction a) => _split(a.cards);
+
   void _refresh(TableState s) {
     s.piles[3]
       ..clear()
       ..addAll([for (final m in melds(s)) ...m]);
+  }
+
+  void _used(TableState s, List<KCard> tiles) {
+    final must = mustUse(s);
+    if (must >= 0 && tiles.contains(must)) s.vars[_mustVar] = 0;
   }
 
   @override
@@ -841,7 +964,10 @@ class Okey101Rules extends OkeyRules {
     switch (a.kind) {
       case 1:
         if (a.target == 1 && s.piles[1].isNotEmpty) {
-          h.add(s.piles[1].removeLast());
+          final t = s.piles[1].removeLast();
+          h.add(t);
+          _setDiscard(s, (p - 1 + seats) % seats, -1);
+          if (s.vars.length > _mustVar) s.vars[_mustVar] = t + 1;
         } else {
           if (s.piles[0].isEmpty) {
             _end(s, -1, false);
@@ -857,47 +983,78 @@ class Okey101Rules extends OkeyRules {
           for (final t in g) {
             h.remove(t);
           }
-          s.piles.add(g);
+          s.piles.add([kMeldOwner + p, ...g]);
+          _used(s, g);
         }
         s.vars[2] |= 1 << p;
         if (a.kind == 6) s.vars[3] |= 1 << p;
+        if (s.vars.length > _nowVar) s.vars[_nowVar] |= 1 << p;
         _refresh(s);
       case 2:
         for (final t in a.cards) {
           h.remove(t);
         }
-        s.piles.add(List.of(a.cards));
+        s.piles.add([kMeldOwner + p, ...a.cards]);
+        _used(s, a.cards);
         _refresh(s);
       case 3:
         h.remove(a.cards.first);
         s.piles[4 + a.target].add(a.cards.first);
+        _used(s, a.cards);
         _refresh(s);
       default:
         final t = a.cards.first;
         h.remove(t);
         s.piles[1].add(t);
+        _setDiscard(s, p, t);
+        final okeyOut = okeyMeaning(t, kind(s)) < 0;
         if (h.isEmpty) {
-          _end(s, p, okeyMeaning(t, kind(s)) < 0);
+          _end(s, p, okeyOut);
           return;
         }
+        // Okey ya da işlek taş atmak: 101 ceza.
+        if ((okeyOut || canAddToTable(s, t)) && s.vars.length > _penVar + p) s.vars[_penVar + p]++;
+        if (s.vars.length > _nowVar) s.vars[_nowVar] &= ~(1 << p);
         s.vars[0] = 0;
         s.turn = (p + 1) % seats;
     }
   }
 
+  /// Bu atış oyun içi ceza yazar mı (son taş değilse okey ya da işlek taş).
+  bool discardPenalty(TableState s, KCard t) =>
+      s.hands[s.turn].length > 1 && (okeyMeaning(t, kind(s)) < 0 || canAddToTable(s, t));
+
+  /// Ceza ayrıntısı: elde kalan taş toplamı (okeysiz), elde kalan okey sayısı.
+  (int, int) handLoad(TableState s, int p) {
+    var sum = 0, jokers = 0;
+    for (final t in s.hands[p]) {
+      if (okeyMeaning(t, kind(s)) < 0) {
+        jokers++;
+      } else {
+        sum += value(s, t);
+      }
+    }
+    return (sum, jokers);
+  }
+
   void _end(TableState s, int winner, bool okeyOut) {
     s.over = true;
+    final pairWin = winner >= 0 && pairOpened(s, winner);
+    final elden = winner >= 0 && s.vars.length > _nowVar && (s.vars[_nowVar] >> winner) & 1 == 1;
+    final mult = (okeyOut ? 2 : 1) * (pairWin ? 2 : 1);
     for (var p = 0; p < seats; p++) {
       int pen;
       if (p == winner) {
-        pen = okeyOut ? -202 : -101;
+        pen = elden ? -202 * (okeyOut ? 2 : 1) : -101 * mult;
+      } else if (elden) {
+        pen = 404 * (okeyOut ? 2 : 1);
       } else if (!opened(s, p)) {
-        pen = 202;
+        pen = 202 * math.min(mult, 2);
       } else {
-        pen = s.hands[p].fold<int>(0, (a, t) => a + value(s, t));
-        if (pairOpened(s, p)) pen *= 2;
+        final (sum, jokers) = handLoad(s, p);
+        pen = sum * (pairOpened(s, p) ? 2 : 1) * mult + 101 * jokers;
       }
-      s.scores[p] = -pen;
+      s.scores[p] = -(pen + inPlayPenalty(s, p));
     }
     if (partners) {
       for (var p = 0; p < 2; p++) {
@@ -922,57 +1079,62 @@ class Okey101Rules extends OkeyRules {
     final p = s.turn;
     final h = s.hands[p];
     final open = opened(s, p);
+    final l = legalActions(s);
     if (s.vars[0] == 0) {
-      // Açan oyuncu, atık taş masadaki bir pere işleniyor ya da elini
-      // güçlendiriyorsa onu alır.
-      if (open && s.piles[1].isNotEmpty) {
-        final t = s.piles[1].last;
-        if (okeyMeaning(t, kind(s)) < 0) return const TAction(1, [], 1);
-        for (final mm in melds(s)) {
-          if (mm.length > 2 && okeyGroupValue(meanings(s, [...mm, t])) > 0) return const TAction(1, [], 1);
-        }
-        if (!pairOpened(s, p)) {
-          final before = okeyCoverPlan(meanings(s, h)).$1;
-          final after = okeyCoverPlan(meanings(s, [...h, t])).$1;
-          if (after > before) return const TAction(1, [], 1);
-        }
-      }
+      // Atık yalnız hemen kullanılabiliyorsa alınabilir: işe yarıyorsa al.
+      if (l.any((a) => a.kind == 1 && a.target == 1) && !blunder(r)) return const TAction(1, [], 1);
       return const TAction(1, [], 0);
     }
-    final l = legalActions(s);
+    if (mustUse(s) >= 0) {
+      for (final k in [5, 6, 2, 3]) {
+        final use = l.where((a) => a.kind == k).toList()..sort((a, b) => b.cards.length.compareTo(a.cards.length));
+        if (use.isNotEmpty) return use.first;
+      }
+    }
+    final stock = s.piles[0].length;
     if (!open) {
       final o5 = l.where((a) => a.kind == 5);
       if (o5.isNotEmpty) return o5.first;
-      // Çiftle açmak yalnızca çiftler gerçekten güçlüyse.
+      // Çiftle açmak cezayı ikiye katlar: yalnız çiftler gerçekten güçlüyse.
       final o6 = l.where((a) => a.kind == 6);
-      if (o6.isNotEmpty && pairsIn(s, h).length >= 6) return o6.first;
+      if (o6.isNotEmpty) {
+        final np = pairsIn(s, h).length;
+        if (np >= 6 || (np >= 5 && stock <= 8)) return o6.first;
+      }
     } else {
       final lay = l.where((a) => a.kind == 2).toList()..sort((a, b) => b.cards.length.compareTo(a.cards.length));
       if (lay.isNotEmpty) return lay.first;
-      final add = l.where((a) => a.kind == 3).toList();
-      if (add.isNotEmpty) {
-        // Jokeri ancak son çare olarak işle.
-        add.sort((a, b) => (okeyMeaning(a.cards.first, kind(s)) < 0 ? 1 : 0).compareTo(okeyMeaning(b.cards.first, kind(s)) < 0 ? 1 : 0));
-        return add.first;
-      }
+      bool joker(TAction a) => okeyMeaning(a.cards.first, kind(s)) < 0;
+      final add = l.where((a) => a.kind == 3 && !joker(a)).toList();
+      if (add.isNotEmpty) return add.first;
+      // Okeyi masaya ancak elde işe yaramıyorsa ve oyun sonu yaklaşırken işle;
+      // son iki taşta okey atarak bitirmek daha değerlidir.
+      final addJ = l.where((a) => a.kind == 3 && joker(a)).toList();
+      if (addJ.isNotEmpty && h.length > 2 && stock < 8) return addJ.first;
     }
+    if (h.length == 1) return TAction(0, [h.first]);
     final m = meanings(s, h);
     final skipped = pairOpened(s, p) ? const <int>[] : okeyCoverPlan(m).$2;
-    var best = -1, bv = 1 << 30;
+    final pairsMode = pairOpened(s, p) || (!open && pairsIn(s, h).length >= 5);
+    final ranked = <(int, int)>[];
+    final seen = <int>{};
     for (var i = 0; i < h.length; i++) {
-      if (m[i] < 0 && h.length > 1) continue; // okey elde kalır
+      if (m[i] < 0) continue; // okey elde kalır (atmak 101 ceza)
+      if (!seen.add(isOkeyFalseJoker(h[i]) ? 200 : h[i] % 52)) continue;
       final out = skipped.contains(m[i]);
+      final pairOf = m.where((x) => x == m[i]).length >= 2;
       // Açmadan önce yüksek taşlar 101'e ulaşmak için değerlidir: dışarıda
       // kalan düşük taşları at. Açtıktan sonra ceza için yüksek taşları at.
       final vScore = open ? -value(s, h[i]) * 3 : value(s, h[i]) * 2;
-      final v = okeyKeepScore(m, i) * 4 + (out ? 0 : 400) + vScore + r.nextInt(3);
-      if (v < bv) {
-        bv = v;
-        best = i;
-      }
+      var v = (pairsMode ? (pairOf ? 1000 : 0) : okeyKeepScore(m, i) * 4 + (out ? 0 : 400)) + vScore + r.nextInt(3);
+      if (canAddToTable(s, h[i])) v += 5000; // işlek taş atmak 101 ceza
+      ranked.add((v, i));
     }
-    if (best < 0) best = 0;
-    return TAction(0, [h[best]]);
+    if (ranked.isEmpty) return TAction(0, [h.first]);
+    ranked.sort((a, b) => a.$1.compareTo(b.$1));
+    final loose = ranked.where((e) => e.$1 < ranked.first.$1 + 400).length;
+    final pick = blunder(r) && loose > 1 ? ranked[1 + r.nextInt(math.min(2, loose - 1))].$2 : ranked.first.$2;
+    return TAction(0, [h[pick]]);
   }
 
   @override
@@ -980,4 +1142,87 @@ class Okey101Rules extends OkeyRules {
     final need = opened(s, 0) ? '✓' : '101+';
     return 'Okey: ${okeyName(kind(s))}  ·  ${kt(lang, 'need')}: $need  ·  ${Strings.tx(lang, 'Deste', 'Stock')}: ${s.piles[0].length}';
   }
+}
+
+// ======================================================================
+// Istaka dizme (Seri diz / Çift diz)
+
+/// Eli istakada dizmek için gruplara ayırır: [pairs] ise çiftler, değilse
+/// en çok taşı kapsayan per (seri ve grup) seçimi. Dönen: perler ve dışarıda
+/// kalan taşlar (renk ve sayıya göre sıralı, okeyler en sonda).
+(List<List<KCard>>, List<KCard>) okeyArrange(List<KCard> hand, int okeyKind, {bool pairs = false}) {
+  const rules = Okey101Rules();
+  final s = TableState(seats: 1, hands: [<KCard>[]], piles: [<KCard>[]], vars: [0, okeyKind, 0, 0, 0, 0, 0, 0]);
+  int m(KCard t) => okeyMeaning(t, okeyKind);
+  int order(KCard t) => m(t) < 0 ? 999 : m(t);
+  List<KCard> sorted(Iterable<KCard> l) => l.toList()..sort((a, b) => order(a).compareTo(order(b)));
+  if (pairs) {
+    final ps = rules.pairsIn(s, hand);
+    final used = {for (final p in ps) ...p};
+    return (ps, sorted(hand.where((t) => !used.contains(t))));
+  }
+  final cands = rules.candidates(s, hand)..sort((a, b) => b.length.compareTo(a.length));
+  var best = <List<KCard>>[];
+  var bestV = 0;
+  final cur = <List<KCard>>[];
+  final used = <KCard>{};
+  var steps = 0;
+  void go(int i, int v) {
+    if (++steps > 6000) return;
+    if (v > bestV) {
+      bestV = v;
+      best = List.of(cur);
+    }
+    for (var k = i; k < cands.length; k++) {
+      final g = cands[k];
+      if (g.any(used.contains)) continue;
+      used.addAll(g);
+      cur.add(g);
+      // Okey kullanmayan per biraz öne alınır (okey esnek kalsın).
+      go(k + 1, v + g.length * 10 - g.where((t) => m(t) < 0).length);
+      cur.removeLast();
+      used.removeAll(g);
+    }
+  }
+
+  go(0, 0);
+  final groups = [for (final g in best) okeyMeldOrder(g, okeyKind)];
+  final inGroups = {for (final g in groups) ...g};
+  return (groups, sorted(hand.where((t) => !inGroups.contains(t))));
+}
+
+/// Bir perin gösterim sırası: seride sayılar sırayla (okeyler boşluklara),
+/// grupta renk sırasıyla.
+List<KCard> okeyMeldOrder(List<KCard> g, int okeyKind) {
+  int m(KCard t) => okeyMeaning(t, okeyKind);
+  final nat = g.where((t) => m(t) >= 0).toList();
+  final wild = g.where((t) => m(t) < 0).toList();
+  if (nat.isEmpty) return List.of(g);
+  final isSet = nat.every((t) => m(t) % 13 == m(nat.first) % 13) && nat.map((t) => m(t) ~/ 13).toSet().length == nat.length && g.length <= 4;
+  if (isSet) return [...nat..sort((a, b) => m(a).compareTo(m(b))), ...wild];
+  // Seri: 1, 12-13'ün yanındaysa sona (14) konur.
+  final hasHigh = nat.any((t) => m(t) % 13 >= 11);
+  int pos(KCard t) => m(t) % 13 == 0 && hasHigh ? 13 : m(t) % 13;
+  nat.sort((a, b) => pos(a).compareTo(pos(b)));
+  final out = <KCard>[];
+  var w = 0;
+  for (var i = 0; i < nat.length; i++) {
+    if (i > 0) {
+      for (var gap = pos(nat[i]) - pos(nat[i - 1]) - 1; gap > 0 && w < wild.length; gap--) {
+        out.add(wild[w++]);
+      }
+    }
+    out.add(nat[i]);
+  }
+  // Artan okeyler: önce sona, 13'ü aşacaksa başa.
+  var end = pos(nat.last);
+  while (w < wild.length) {
+    if (end < 13) {
+      out.add(wild[w++]);
+      end++;
+    } else {
+      out.insert(0, wild[w++]);
+    }
+  }
+  return out;
 }

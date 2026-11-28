@@ -83,13 +83,20 @@ void _back(Canvas c, Rect r, Color a, Color b) {
 
 /// Taşı [r] içine çizer. [style] kTileOkey / kTileDomino / kTileMahjong.
 void paintTile(Canvas c, Rect r, KCard t, int style,
-    {required bool faceUp, Color backA = const Color(0xFF1F7A6B), Color backB = const Color(0xFF155247), bool highlight = false, bool dim = false, bool colorBlind = false}) {
+    {required bool faceUp,
+    Color backA = const Color(0xFF1F7A6B),
+    Color backB = const Color(0xFF155247),
+    bool highlight = false,
+    bool dim = false,
+    bool colorBlind = false,
+    bool joker = false}) {
   if (!faceUp) {
     _back(c, r, backA, backB);
   } else {
     switch (style) {
       case kTileOkey:
         _okey(c, r, t, colorBlind);
+        if (joker) _jokerBadge(c, r);
       case kTileDomino:
         _domino(c, r, t);
       default:
@@ -122,7 +129,7 @@ void _okey(Canvas c, Rect r, KCard t, bool colorBlind) {
     return;
   }
   final col = okeyInks[okeyColor(t)];
-  _text(c, '${okeyNumber(t)}', Offset(r.center.dx, r.top + r.height * 0.36), w * 0.5, col);
+  _text(c, '${okeyNumber(t)}', Offset(r.center.dx, r.top + r.height * 0.37), w * (okeyNumber(t) > 9 ? 0.5 : 0.56), col);
   // Sayının altında renk işareti; renk körü kipinde dört farklı biçim.
   final o = Offset(r.center.dx, r.top + r.height * 0.72), d = w * 0.1;
   final p = Paint()..color = col;
@@ -149,6 +156,31 @@ void _okey(Canvas c, Rect r, KCard t, bool colorBlind) {
     default:
       c.drawCircle(o, d, p);
   }
+}
+
+/// Okey (joker) taşının köşesindeki yıldız: elde ve masada okey hemen seçilir.
+void _jokerBadge(Canvas c, Rect r) {
+  final rad = r.width * 0.17;
+  final o = Offset(r.right - rad * 1.05, r.top + rad * 1.05);
+  final path = Path();
+  for (var i = 0; i < 10; i++) {
+    final a = -math.pi / 2 + i * math.pi / 5;
+    final rr = i.isEven ? rad : rad * 0.45;
+    final p = o + Offset(math.cos(a), math.sin(a)) * rr;
+    if (i == 0) {
+      path.moveTo(p.dx, p.dy);
+    } else {
+      path.lineTo(p.dx, p.dy);
+    }
+  }
+  path.close();
+  c.drawPath(path, Paint()..color = const Color(0xFFE0A100));
+  c.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF7A4E00)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.8, r.width * 0.02));
 }
 
 void _pips(Canvas c, Rect half, int n) {
