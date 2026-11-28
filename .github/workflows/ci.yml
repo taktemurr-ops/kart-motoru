@@ -48,12 +48,17 @@ jobs:
       - name: Görüntüleri günlüğe yaz (küçük JPEG, base64)
         if: always()
         run: |
-          cd build/shots
-          for f in *.png; do
-            [ -f "$f" ] || continue
-            convert "$f" -resize '720x720>' -quality 55 "${f%.png}.jpg"
-            echo "SHOT|${f%.png}|$(base64 -w0 "${f%.png}.jpg")"
-          done
+          python3 -m pip install -q pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, glob, io, os
+          from PIL import Image
+          for f in sorted(glob.glob('build/shots/*.png')):
+              im = Image.open(f).convert('RGB')
+              im.thumbnail((720, 720))
+              b = io.BytesIO()
+              im.save(b, 'JPEG', quality=60)
+              print('SHOT|' + os.path.basename(f)[:-4] + '|' + base64.b64encode(b.getvalue()).decode())
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

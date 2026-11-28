@@ -669,7 +669,20 @@ class KingRules extends TrickRules {
     final h = s.hands[seat];
     final lead = suitOf(s.trick.first);
     final follow = h.where((c) => suitOf(c) == lead).toList();
-    if (follow.isNotEmpty) return follow;
+    if (follow.isNotEmpty) {
+      // Ceza oyunlarında: masada o renkten daha büyük kart varsa, elindeki
+      // ceza kartını (ör. papaz düştükten sonra kız, as düştükten sonra
+      // rıfkı) vermek zorunludur.
+      if (const {1, 2, 3, 5}.contains(s.contract)) {
+        var hi = 0;
+        for (final c in s.trick) {
+          if (suitOf(c) == lead && strength(c) > hi) hi = strength(c);
+        }
+        final forced = follow.where((c) => _penalty(s, c) && strength(c) < hi).toList();
+        if (forced.isNotEmpty) return forced;
+      }
+      return follow;
+    }
     // Renk yoksa: ceza kartı varsa atmak zorunlu; koz oyununda koz atmak zorunlu.
     if (s.contract == 6 && s.trump >= 0) {
       final tr = h.where((c) => suitOf(c) == s.trump).toList();
@@ -683,6 +696,24 @@ class KingRules extends TrickRules {
   @override
   void onPlay(TrickState s, int seat, KCard c) {
     if (suitOf(c) == kHearts) s.extra = 1;
+  }
+
+  /// Kart cezalı oyunlar bütün ceza kartları alınınca biter (kalan eller
+  /// oynanmaz).
+  @override
+  void afterTrick(TrickState s, int winner) {
+    final total = switch (s.contract) { 1 => 13, 2 => 8, 3 => 4, 5 => 1, _ => 0 };
+    if (total == 0) return;
+    var taken = 0;
+    for (final t in s.taken) {
+      taken += t.where((c) => _penalty(s, c)).length;
+    }
+    if (taken >= total) {
+      for (final h in s.hands) {
+        s.kitty.addAll(h);
+        h.clear();
+      }
+    }
   }
 
   @override
