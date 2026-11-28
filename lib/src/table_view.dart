@@ -9,6 +9,7 @@ import 'package:studio_core/core/rng.dart';
 import 'package:studio_core/core/strings.dart';
 
 import 'card_painter.dart';
+import 'kart_texts.dart';
 import 'okey.dart';
 import 'okey_texts.dart';
 import 'match_view.dart';
